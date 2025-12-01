@@ -1,0 +1,124 @@
+# Post clustering processing
+Here the clustered climate data is processed, meaning the deviation from each point towards the centoid is calculated and a representative datapoint for each cluster is chosen. In the end a .csv file is created containing the information about the cluster center and the representative plot.
+```{r}
+# Libraries
+library(dplyr)
+library(tidyr)
+library(ggpubr)
+library(readr)
+```
+## 1.  Set path to working environment independent of operating system
+```{r}
+if (.Platform$OS.type == "windows") {
+  cPath <- "F:/Data/climatedata/germany_1km_res/2_work"
+} else {
+  cPath <- "/data/public/Data/climatedata/germany_1km_res/2_work"
+}
+cPath <- normalizePath(cPath, winslash = "/")
+```
+## 2.  Load csv files containing information about the clusters and the climate data
+```{r}
+setwd(cPath)
+# Clustered climate
+dfClimDat <- read.csv(file = file.path("clustered","k10000_clim_dat.csv"))
+# Cluster center
+dfCentoid <- read.csv(file = file.path("clustered", "k10000_centoids.csv"))
+```
+## 3.  Search closest
+```{r}
+r_df <- data.frame(
+  cluster = character(length(unique(dfClimDat$cluster))),
+  closestP = character(length(unique(dfClimDat$cluster)))
+)
+i <- 1
+for (icluster in unique(dfClimDat$cluster)) {
+  df1 <- dfCentoid[dfCentoid$cluster_id == icluster,] %>% dplyr::select(-rep_index)
+  df2 <- dfClimDat[dfClimDat$cluster == icluster,] %>% dplyr::select(-lat, -lon)
+  
+  df1 <- df1 %>% dplyr::select(-cluster_id)
+  df2 <- df2 %>% dplyr::select(-cluster)
+  
+  idist <- which.min(sqrt(rowSums(df2 - df1[rep(1, nrow(df2)),])^2))
+  
+  r_df[i, 1] <- icluster
+  r_df[i, 2] <- names(idist)
+  i <- i + 1
+}
+rm(df1, df2, i, icluster, idist)
+```
+## 4.  Match cluster center point with latitude and longitude
+```{r}
+dfClimDat$id <- rownames(dfClimDat)
+dfClimCent <- dfClimDat[dfClimDat$id %in% r_df$closestP,]
+rm(r_df)
+```
+## 5.  Calculate deviation from cluster centoid
+```{r}
+dfCombi <- left_join(
+  x = dfClimDat,
+  y = dfClimCent %>% dplyr::select(-c(lat, lon, id)),
+  by = join_by(cluster),
+  suffix = c("","_cent")
+) %>% mutate(
+  max_tmp_dif = max_tmp - max_tmp_cent,
+  min_tmp_dif = min_tmp - min_tmp_cent,
+  prec_dif = prec - prec_cent,
+  rad_dif = rad - rad_cent,
+  vpd_dif = vpd - vpd_cent
+)
+dfClDif <- left_join(
+  x = dfClimDat,
+  y = dfCentoid %>% dplyr::select(-rep_index),
+  by = join_by(cluster == cluster_id),
+  suffix = c("","_cent")
+) %>% mutate(
+  max_tmp_dif = max_tmp - max_tmp_cent,
+  min_tmp_dif = min_tmp - min_tmp_cent,
+  prec_dif = prec - prec_cent,
+  rad_dif = rad - rad_cent,
+  vpd_dif = vpd - vpd_cent
+)
+```
+Some cool plots to show the differences between centoid and each row.
+```{r}
+ggplot(data = dfCombi %>% pivot_longer(
+  cols = c(ends_with("_dif")),
+  names_to = "difs",
+  values_to = "dif_val"
+)) +
+  geom_density(
+    aes(x = dif_val),
+    alpha = .5
+  ) +
+  facet_wrap(~difs, scales = "free") +
+  labs(title = "Difference to centoid") +
+  theme_pubr()
+
+ggplot(data = dfClDif %>% pivot_longer(
+  cols = c(ends_with("_dif")),
+  names_to = "difs",
+  values_to = "dif_val"
+)) +
+  geom_density(
+    aes(x = dif_val),
+    alpha = .5
+  ) +
+  facet_wrap(~difs, scales = "free") +
+  labs(title = "Difference to cluster mean") +
+  theme_pubr()
+```
+## 6.  Safe .csv file with centoid latitude and longitude
+```{r}
+write_csv(
+  #dfCombi %>% select(lat, lon, cluster),
+  dfClimCent %>% dplyr::select(lon, lat, cluster),
+  file = "cluster_coords.csv"
+)
+```
+
+Cleanup:
+```{r}
+rm(cPath)
+rm(dfCentoid, dfClimCent)
+rm(dfCombi, dfClimDat, dfClDif)
+```

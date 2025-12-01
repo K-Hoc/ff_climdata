@@ -1,0 +1,1155 @@
+# Changing rasta size of climate data for iLand
+Goal is to change the current raster size from 14x14km down to 1x1km and link the specific climates to this. For this rasta data is used and linked to climate data from the dwd. Afterwards a cluster analysis is done to identify clusters and combine the climate to the center of each clusters.
+iLand needs the following climate columns:
+- point_id
+- year
+- month
+- day
+- min_temp
+- max_temp
+- prec
+- rad
+- vpd
+
+Workflow should be in the following steps:
+- gather relevant data
+- cluster analysis
+- z-skaling of climate data
+- Get data for the center of the clusters
+```{r}
+if (.Platform$OS.type == "windows") {
+  cPath <- "F:/Data/climatedata/germany_1km_res/2_work"
+  cRawPath <- "F:/Data/climatedata/germany_1km_res/1_dataRaw"
+} else {
+  cPath <- "/data/public/Data/climatedata/germany_1km_res/2_work"
+  cRawPath <- "/data/public/Data/climatedata/germany_1km_res/1_dataRaw"
+}
+cPath <- normalizePath(cPath, winslash = "/")
+cRawPath <- normalizePath(cRawPath, winslash = "/")
+```
+Loading Libraries that are used throughout this script.
+```{r}
+library(terra)
+library(raster)
+library(tidyverse)
+library(weathermetrics)
+library(factoextra)
+library(cluster)
+library(ggpubr)
+library(sf)
+#library(compiler)
+#library(fastkmedoids)
+```
+## Gather climate data
+Load raster data.
+```{r}
+setwd(cPath)
+ann_max_tmp <- terra::rast(file.path(cRawPath,"raster","TADXMM_17_1981_30.asc"))
+ann_min_tmp <- terra::rast(file.path(cRawPath,"raster","TADNMM_17_1981_30.asc"))
+ann_mean_prec <- terra::rast(file.path(cRawPath,"raster","RSMS_17_1981_30.asc"))
+```
+Next is extracting the information stored in the raster data and store it in a table. First a function due to repeated process.
+```{r}
+get_raster_data <- function(rRaster) {
+  coords <- terra::xyFromCell(rRaster, 1:ncell(rRaster))
+  vals <- terra::extract(rRaster, coords)
+  r_df <- data.frame(
+    lon = coords[,1],
+    lat = coords[,2],
+    val = vals[,1]
+  )
+  return(r_df)
+}
+```
+Extracting data from raster into table, for precipitation, min & max temperature
+```{r}
+df_prec <- get_raster_data(ann_mean_prec) %>% rename(prec = val)
+df_max_tmp <- get_raster_data(ann_max_tmp) %>% rename(max_tmp = val)
+df_min_tmp <- get_raster_data(ann_min_tmp) %>% rename(min_tmp = val)
+df_clim <- inner_join(
+  x = df_max_tmp,
+  y = df_min_tmp,
+  by = join_by(lat, lon)
+) %>% 
+  inner_join(
+    x = .,
+    y = df_prec,
+    by = join_by(lat,lon)
+  )
+
+rm(df_prec, df_max_tmp, df_min_tmp)
+```
+### More complex .asc files
+Some of the DWD files contain a custom header. The terra package cannot handle this, so a custom approach is needed. Here is a function to get the rasta data from a .asc file with a custom header, it will skip the header and extract only the "raster" part of the file.
+```{r}
+get_raster <- function(strFilePath) {
+  # Read the full file as text
+  # lines <- readLines(strFilePath, encoding = "UTF-8")
+  lines <- readLines(strFilePath, encoding = "latin1")
+  
+  # Find the line where raster data begins 
+  # (the "[ASCII-Raster-Format]" block starts here)
+  start_idx <- grep("^NCOLS", lines)  # or grep("^[A-Z]+", lines) to find NCOLS
+  
+  # Keep only the raster part
+  ascii_raster_lines <- lines[start_idx:length(lines)]
+
+  # Write it to a unique temporary file
+  # writeLines(ascii_raster_lines, file.path(cPath,"raster_cleared.asc"))
+  tmp_file <- tempfile(fileext = ".asc")
+  writeLines(ascii_raster_lines, tmp_file)
+  
+  # # Now load it with terra
+  # r <- terra::rast(file.path(cPath,"raster_cleared.asc"))
+  r <- terra::rast(tmp_file)
+  
+  # Try without deleting manually
+  # # Delete temporary file
+  # unlink(tmp_file)
+  cat("Raster: ", summary(r, size = Inf), "\n"); flush.console()
+
+  return(r)
+}
+```
+Extract radiation data from raster.
+```{r}
+# ann_rad_old <- get_raster(
+#   strFilePath = file.path(
+#     "raster","grids_germany_multi_monthly_radiation_global_1981_2010_01.asc"
+#   )
+# )
+# ann_rad <- get_raster(
+#   strFilePath = file.path(
+#     cPath,"raster",
+#     "20250714","grids_germany_multi_annual_radiation_global_1981_2010.asc"
+#   )
+# )
+# Create raster from multi monthly radiation global for all 12 months
+rad_months <- list.files(
+  file.path(cRawPath, "raster", "20250714"),
+  full.names = T,
+  pattern = "monthly_rad"
+)
+rad_months_rast <- rast(lapply(X = rad_months, FUN = get_raster))
+ann_rad <- app(rad_months_rast, "sum")
+```
+### Calculating vapour pressure deficite (VPD)
+```{r}
+vpd_calc <- function(t, td, c1 = 0.611, c2 = 17.67, c3 = 243.5) {
+  c1 * exp((c2 * (t)) / (t + c3)) - c1 * exp((c2 * (td)) / (td + c3))
+}
+```
+Loading hurs (humidity) and tas (mean temperature) rasters form DWD into variables and calculating VPD from these variables.
+```{r}
+# Loading hurs & tas raster
+eval_hurs <- rast(
+  file.path(cRawPath,"raster","hurs_hyras_1_1981_2010_v6-0_de_mean.nc")
+)
+plot(eval_hurs)
+eval_tas <- rast(
+  file.path(cRawPath,"raster","tas_hyras_1_1981_2010_v6-0_de_mean.nc")
+)
+plot(eval_tas)
+
+# Calculating VPD
+td <- weathermetrics::humidity.to.dewpoint(
+  rh = eval_hurs,
+  t = eval_tas,
+  temperature.metric = "celsius"
+)
+
+eval_vpd <- vpd_calc(eval_tas, td)
+plot(eval_vpd)
+
+# Extracting the information form the raster and add it to the climate frame
+df_vpd <- get_raster_data(eval_vpd)
+
+```
+### Combining climate data
+Combining all climate dataframes into one. Here the different extents will need to be harmonised.
+```{r}
+# min, max, prec, rad are in gauss-krueger
+gauss_kruger_crs <- "EPSG:31467"
+crs(ann_max_tmp) <- gauss_kruger_crs
+crs(ann_min_tmp) <- gauss_kruger_crs
+crs(ann_mean_prec) <- gauss_kruger_crs
+crs(ann_rad) <- gauss_kruger_crs
+
+# vpd is in ETRS89 / LAEA Europe
+crs(eval_vpd)
+
+# converting etr back to gk
+vpd_pr <- project(eval_vpd, crs(ann_max_tmp))
+
+# resampling all raster to the same extend
+vpd_res <- resample(vpd_pr, ann_max_tmp, method = "bilinear")
+rad_res <- terra::resample(ann_rad, ann_max_tmp, method = "bilinear")
+plot(ann_max_tmp)
+plot(ann_mean_prec)
+plot(vpd_res)
+plot(rad_res)
+
+# Get data from raster
+df_rad <- get_raster_data(rad_res)
+df_vpd <- get_raster_data(vpd_res)
+
+# Add rad and vpd to df_clim
+df_clim <- inner_join(
+  x = df_clim,
+  y = df_rad,
+  by = join_by(lat, lon)
+) %>% inner_join(
+  x = .,
+  y = df_vpd,
+  by = join_by(lat, lon)
+)
+df_clim <- df_clim %>% rename(rad = val.x, vpd = val.y)
+df_clim$max_tmp <- df_clim$max_tmp /10 # Scaling to °C
+df_clim$min_tmp <- df_clim$min_tmp /10 # Scaling to °C
+df_clim$rad <- df_clim$rad * 3.6 # Scaling from kWh/m² to MJ/m²/day
+```
+Cleanup before cluster analysis:
+```{r}
+rm(ann_max_tmp, ann_mean_prec, ann_min_tmp, ann_rad)
+rm(eval_hurs, eval_tas, eval_vpd, df_rad, df_vpd)
+rm(td, vpd_pr, vpd_res, rad_res)
+
+# write_csv(df_clim %>% na.omit(), file = "clim_dat.csv")
+```
+
+<!-- ## Cluster analysis - climate data -->
+<!-- Clustering climate data using clara() function from the cluster package. Every good cluster analysis checks what the optimal number of clusters is using shoulder or knee approach. But before this is done the data is z-transformed. -->
+<!-- ```{r} -->
+<!-- # Function for z-transformation -->
+<!-- z_transform <- function(x) { -->
+<!--   z <- (x - mean(x, na.rm = TRUE)) / sd(x, na.rm = TRUE) -->
+<!--   return(z) -->
+<!-- } -->
+
+<!-- # function to determine the optimal cluster size (by Christina) -->
+<!-- cluster_number<-function(pobj, nrange, seed=1312) { -->
+<!--   pobj1 <- scale(pobj) -->
+<!--   sum.diss <- data.frame(k = 0, sdiss = 0, avgdiss = 0) -->
+<!--   silhu <- data.frame(k = 0, sil = 0) -->
+<!--   isolat <- data.frame(k = 0, isolation = 0) -->
+<!--   object <- data.frame(k = 0, obj.fct = 0) -->
+
+<!--   #for(i in 1:length(nrange)) { -->
+<!--   for(i in nrange) { -->
+<!--     cat("iteration: ", i, "\n") -->
+<!--     nn <- nrange[i] -->
+<!--     set.seed(seed) -->
+<!--     # x <- clara(pobj1, k = nn, stand = F, rngR = TRUE) -->
+<!--     # cat("Clustering done...") -->
+<!--     x <- clara(pobj1, k = nn, rngR = TRUE) -->
+
+<!--     clusinf <- x$clusinfo -->
+<!--     s_diss <- sum(clusinf[,1] * clusinf[,3]) -->
+<!--     avg_diss <- mean(clusinf[,3]) -->
+<!--     isol <- mean(clusinf[,4]) -->
+
+<!--     sdiss <- data.frame( -->
+<!--       k = nn, -->
+<!--       sdiss = s_diss, -->
+<!--       avgdiss = avg_diss -->
+<!--     ) -->
+<!--     #sil<-data.frame(k=nn,sil=x$silinfo$avg.width, fix.empty.names = FALSE) -->
+<!--     #cat("sil") -->
+<!--     # isol <- data.frame( -->
+<!--     #   k = nn, -->
+<!--     #   isolation = isol -->
+<!--     # ) -->
+<!--     # obj <- data.frame( -->
+<!--     #   k = nn, -->
+<!--     #   obj.fct = x$objective -->
+<!--     # ) -->
+<!--     #sum.diss <- rbind(sum.diss,sdiss) -->
+<!--     #silhu<-rbind(silhu,sil) -->
+<!--     sum.diss <- sum.diss %>% add_row(k = nn, sdiss = s_diss, avgdiss = avg_diss) -->
+<!--     silhu <- silhu %>% add_row(k = nn, sil = x$silinfo$avg.width) -->
+<!--     isolat <- isolat %>% add_row(k = nn, isolation = isol) -->
+<!--     object <- object %>% add_row(k = nn, obj.fct = x$objective) -->
+<!--     # isolat <- rbind(isolat,isol) -->
+<!--     # object <- rbind(object,obj) -->
+<!--   } -->
+<!--   #par(mfrow=c(2,2)) -->
+<!--   plot( -->
+<!--     sum.diss$avgdiss ~ sum.diss$k, -->
+<!--     type = "b", -->
+<!--     ylab = "average cluster-internal dissimilarities", -->
+<!--     xlab = "k" -->
+<!--   ) # low values are better -->
+<!--   plot( -->
+<!--     silhu$sil ~ silhu$k, -->
+<!--     type = "b", -->
+<!--     ylab = "average silhouette over all clusters", -->
+<!--     xlab = "k" -->
+<!--   ) # high values are better -->
+<!--   plot( -->
+<!--     isolat$isolation ~ isolat$k, -->
+<!--     type = "b", -->
+<!--     ylab = "average isolation over all clusters", -->
+<!--     xlab = "k" -->
+<!--   ) -->
+<!--   plot( -->
+<!--     object$obj.fct ~ object$k, -->
+<!--     type = "b", -->
+<!--     ylab = "final objective function", -->
+<!--     xlab = "k" -->
+<!--   ) -->
+<!--   out <- list(sum.diss, silhu, isolat, object) -->
+<!--   #par(mfrow=c(1,1)) -->
+<!--   return(out) -->
+<!-- } -->
+<!-- #cluster_number <- cmpfun(cluster_number) -->
+<!-- ``` -->
+<!-- Main part of the cluster analysis, including scaling of data, shoulder and knee search + actual clustering. -->
+<!-- ```{r} -->
+<!-- dfclim_sc <- scale(df_clim %>% dplyr::select(-lon, -lat) %>% na.omit()) -->
+
+<!-- #nrange <- seq(from=1, to=50, by=1) -->
+<!-- #clus <- cluster_number(df_clim %>% na.omit(), nrange) -->
+<!-- #clus <- cluster_number(dfclim_sc %>% na.omit(), nrange) -->
+
+<!-- # nrange <- seq(from = 1000, to = 10000, by = 1000) -->
+<!-- # clus <- cluster_number(df_clim %>% na.omit(), nrange) -->
+<!-- ``` -->
+
+<!-- ```{r} -->
+<!-- clarax <- clara( -->
+<!--   #x = df_clim %>% na.omit(), -->
+<!--   x = dfclim_sc %>% na.omit(), -->
+<!--   k = 12 -->
+<!--   #cluster.only = TRUE -->
+<!-- ) -->
+<!-- plot(clarax) -->
+<!-- ``` -->
+
+<!-- ```{r} -->
+<!-- fviz_silhouette( -->
+<!--   sil.obj = clarax, -->
+<!--   label = TRUE -->
+<!-- ) + theme_bw() -->
+
+<!-- fviz_cluster( -->
+<!--   object = clarax, -->
+<!--   stand = FALSE, -->
+<!--   geom = "point", -->
+<!--   pointsize = 1 -->
+<!-- ) + theme_bw() -->
+
+<!-- clarax$medoids -->
+<!-- ``` -->
+<!-- ### Add cluster information to dataset -->
+<!-- Now the information about which datapoint belongs to which cluster is put back into the climate data_frame. -->
+<!-- ```{r} -->
+<!-- # Add cluster number to each row -->
+<!-- dfclim_cl <- inner_join( -->
+<!--   x = df_clim %>% mutate(row = as.numeric(rownames(df_clim))), -->
+<!--   y = data.frame( -->
+<!--     cluster = clarax$clustering, -->
+<!--     row = as.numeric(names(clarax$clustering)) -->
+<!--   ), -->
+<!--   by = join_by(row) -->
+<!-- ) -->
+<!-- dfclim_cl$cluster <- as.factor(dfclim_cl$cluster) -->
+
+<!-- # Identify cluster meodit -->
+<!-- dfclim_cl$medoid <- FALSE -->
+<!-- tmp <- data.frame( -->
+<!--   row = as.numeric(rownames(clarax$medoids)), -->
+<!--   medoid = TRUE -->
+<!-- ) -->
+<!-- dfclim_cl[dfclim_cl$row %in% tmp$row,]$medoid <- TRUE -->
+
+<!-- summary(dfclim_cl) -->
+<!-- ``` -->
+<!-- ### Visualizing clusters -->
+<!-- Visualizing clusters fore some of the variables in the climate data frame. -->
+<!-- ```{r} -->
+<!-- # l_dfclim_cl <- dfclim_cl %>% tidyr::pivot_longer( -->
+<!-- #   cols = c(max_tmp, min_tmp, prec, rad, vpd), -->
+<!-- #   names_to = "para", -->
+<!-- #   values_to = "val" -->
+<!-- # ) -->
+<!-- dfvis <- dfclim_cl -->
+<!-- l_dfvis <- dfclim_cl %>% tidyr::pivot_longer( -->
+<!--   cols = c(max_tmp, min_tmp, prec, rad, vpd), -->
+<!--   names_to = "para", -->
+<!--   values_to = "val" -->
+<!-- ) -->
+<!-- ggplot(data = dfvis) + -->
+<!--   geom_point( -->
+<!--     aes( -->
+<!--       x = max_tmp, -->
+<!--       y = min_tmp, -->
+<!--       col = cluster -->
+<!--     ), -->
+<!--     alpha = 0.5 -->
+<!--   ) + -->
+<!--   theme_pubr() -->
+
+<!-- ggplot(data = l_dfvis) + -->
+<!--   geom_boxplot( -->
+<!--     aes( -->
+<!--       x = para, -->
+<!--       y = val, -->
+<!--       col = cluster -->
+<!--     ) -->
+<!--   ) + -->
+<!--   facet_wrap(~para, scales = "free") + -->
+<!--   theme_pubr() -->
+
+<!-- ggplot(data = l_dfvis %>% filter(medoid == TRUE)) + -->
+<!--   geom_point( -->
+<!--     aes( -->
+<!--       x = para, -->
+<!--       y = val, -->
+<!--       col = cluster -->
+<!--     ), -->
+<!--     position = position_jitterdodge(jitter.width = 0.25) -->
+<!--   ) + -->
+<!--   facet_wrap(~para, scales = "free") + -->
+<!--   theme_pubr() -->
+<!-- ``` -->
+
+<!-- # Plot Germany Map -->
+<!-- Plot the map of Germany and color the climate cluster on the map. -->
+<!-- ```{r} -->
+<!-- library(sf) -->
+<!-- ``` -->
+
+#### f_create_grid
+Create function to convert a data frame to a geographical object.
+
+```{r}
+f_create_grid <- function(df, refsystem, cell_size = 1000) {
+  # Create 1km buffer squares (0.5km radius in each direction)
+  l_sf <- st_as_sf(
+    x = df,
+    coords = c("lon", "lat"),
+    crs = refsystem
+  )
+
+  # Reproject to meters (for buffering), then buffer, then back to GK
+  l_grid <- l_sf %>%
+    st_buffer(
+      dist = cell_size / 2,
+      endCapStyle = "SQUARE"
+    ) # make square polygons
+
+  # Return grid
+  return(l_grid)
+}
+```
+
+<!-- ## Climate cluster map -->
+<!-- 1st plot the map with the clusters visible. -->
+
+<!-- ```{r} -->
+<!-- crs_refsystem <- 31467 -->
+<!-- sf_clim <- f_create_grid( -->
+<!--   df = dfclim_cl, -->
+<!--   refsystem = crs_refsystem -->
+<!-- ) -->
+
+<!-- # Plot temperature (change variable as needed) -->
+<!-- ggplot() + -->
+<!--   geom_sf(data = sf_clim, aes(fill = cluster), size = 1, color = NA) + -->
+<!--   theme_minimal() + -->
+<!--   labs(title = "Climate Cluster Map", fill = "Cluster") -->
+<!-- ``` -->
+
+<!-- 2nd plot the map with all cells colored in the difference to the cluster center (distance in the sense of values not spacial). -->
+
+<!-- ```{r} -->
+<!-- # Calculate cluster means for each variable -->
+<!-- cluster_means <- dfclim_cl %>% -->
+<!--   group_by(cluster) %>% -->
+<!--   summarise( -->
+<!--     across( -->
+<!--       c(max_tmp, min_tmp, prec, rad, vpd), -->
+<!--       mean, -->
+<!--       .names = "mean_{.col}" -->
+<!--     ) -->
+<!--   ) -->
+
+<!-- # Join the means back to the original data -->
+<!-- climate_anomalies <- dfclim_cl %>% -->
+<!--   left_join(cluster_means, by = "cluster") %>% -->
+<!--   mutate( -->
+<!--     max_temp_anomaly = max_tmp - mean_max_tmp, -->
+<!--     min_temp_anomaly = min_tmp - mean_min_tmp, -->
+<!--     prec_anomaly = prec - mean_prec, -->
+<!--     rad_anomaly = rad - mean_rad, -->
+<!--     vpd_anomaly = vpd - mean_vpd -->
+<!--   ) -->
+
+<!-- # Convert to sf format -->
+<!-- # climate_sf <- st_as_sf( -->
+<!-- #   climate_anomalies, -->
+<!-- #   coords = c("lon", "lat"), -->
+<!-- #   crs = 31467 -->
+<!-- # ) -->
+<!-- climate_sf <- f_create_grid( -->
+<!--   df = climate_anomalies, -->
+<!--   refsystem = crs_refsystem -->
+<!-- ) -->
+<!-- ``` -->
+
+<!-- ## Anomaly map -->
+<!-- Create the map: -->
+
+<!-- ```{r} -->
+<!-- # Max tmp anomaly -->
+<!-- ggplot(data = climate_sf) + -->
+<!--   geom_sf(aes(color = max_temp_anomaly), size = 1) + -->
+<!--   scale_color_gradient2( -->
+<!--     low = "blue", -->
+<!--     mid = "white", -->
+<!--     high = "red", -->
+<!--     midpoint = 0 -->
+<!--   ) + -->
+<!--   theme_minimal() + -->
+<!--   labs( -->
+<!--     title = "Max. Temperature Anomaly from Cluster Mean", -->
+<!--     color = "Anomaly (°C)" -->
+<!--   ) -->
+
+<!-- # Min tmp anomaly -->
+<!-- ggplot(data = climate_sf) + -->
+<!--   geom_sf(aes(color = min_temp_anomaly), size = 1) + -->
+<!--   scale_color_gradient2( -->
+<!--     low = "blue", -->
+<!--     mid = "white", -->
+<!--     high = "red", -->
+<!--     midpoint = 0 -->
+<!--   ) + -->
+<!--   theme_minimal() + -->
+<!--   labs( -->
+<!--     title = "Min. Temperature Anomaly from Cluster Mean", -->
+<!--     color = "Anomaly (°C)" -->
+<!--   ) -->
+
+<!-- # Prec anomaly -->
+<!-- ggplot(data = climate_sf) + -->
+<!--   geom_sf(aes(color = prec_anomaly), size = 1) + -->
+<!--   scale_color_gradient2( -->
+<!--     low = "blue", -->
+<!--     mid = "white", -->
+<!--     high = "red", -->
+<!--     midpoint = 0 -->
+<!--   ) + -->
+<!--   theme_minimal() + -->
+<!--   labs( -->
+<!--     title = "Precipitation Anomaly from Cluster Mean", -->
+<!--     color = "Anomaly (mm)" -->
+<!--   ) -->
+
+<!-- # Radiation anomaly -->
+<!-- ggplot(data = climate_sf) + -->
+<!--   geom_sf(aes(color = rad_anomaly), size = 1) + -->
+<!--   scale_color_gradient2( -->
+<!--     low = "blue", -->
+<!--     mid = "white", -->
+<!--     high = "red", -->
+<!--     midpoint = 0 -->
+<!--   ) + -->
+<!--   theme_minimal() + -->
+<!--   labs( -->
+<!--     title = "Radiation Anomaly from Cluster Mean", -->
+<!--     color = "Anomaly" -->
+<!--   ) -->
+
+<!-- # VPD anomaly -->
+<!-- ggplot(data = climate_sf) + -->
+<!--   geom_sf(aes(color = vpd_anomaly), size = 1) + -->
+<!--   scale_color_gradient2( -->
+<!--     low = "blue", -->
+<!--     mid = "white", -->
+<!--     high = "red", -->
+<!--     midpoint = 0 -->
+<!--   ) + -->
+<!--   theme_minimal() + -->
+<!--   labs( -->
+<!--     title = "VPD Anomaly from Cluster Mean", -->
+<!--     color = "Anomaly" -->
+<!--   ) -->
+
+<!-- ``` -->
+# Work with pyton .csv
+BEFORE CONTINUING, MAKE SURE THE "02_cluster5-10k.py" WAS RUN SUCCESSFULLY!
+Clustering was done via a python script, so the clusters for 5-10k are loaded from there.
+```{r}
+setwd(cPath)
+df_5k <- read.csv(file = file.path("clustered","k5000_clim_dat.csv"))
+df_6k <- read.csv(file = file.path("clustered","k6000_clim_dat.csv"))
+df_7k <- read.csv(file = file.path("clustered","k7000_clim_dat.csv"))
+df_8k <- read.csv(file = file.path("clustered","k8000_clim_dat.csv"))
+df_9k <- read.csv(file = file.path("clustered","k9000_clim_dat.csv"))
+df_10k <- read.csv(file = file.path("clustered","k10000_clim_dat.csv"))
+df_15k <- read.csv(file = file.path("clustered","k15000_clim_dat.csv"))
+
+# df_5k$cluster <- as.factor(df_5k$cluster)
+# df_6k$cluster <- as.factor(df_6k$cluster)
+# df_7k$cluster <- as.factor(df_7k$cluster)
+# df_8k$cluster <- as.factor(df_8k$cluster)
+# df_9k$cluster <- as.factor(df_9k$cluster)
+# df_10k$cluster <- as.factor(df_10k$cluster)
+# df_15k$cluster <- as.factor(df_15k$cluster)
+```
+#### Calculate Anomalies
+##### Anomalies from cluster mean
+```{r}
+f_calcAnom <- function(dfclim) {
+  # Calculate cluster means for each variable
+  cluster_means <- dfclim %>%
+    group_by(cluster) %>%
+    summarise(
+      across(
+        c(max_tmp, min_tmp, prec, rad, vpd),
+        mean,
+        .names = "mean_{.col}"
+      )
+    )
+  
+  # Join the means back to the original data
+  climate_anomalies <- dfclim %>%
+    left_join(cluster_means, by = "cluster") %>%
+    mutate(
+      max_temp_anomaly = max_tmp - mean_max_tmp,
+      min_temp_anomaly = min_tmp - mean_min_tmp,
+      prec_anomaly = prec - mean_prec,
+      rad_anomaly = rad - mean_rad,
+      vpd_anomaly = vpd - mean_vpd
+    )
+  return(climate_anomalies)
+}
+```
+##### Anomalies from cluster medoid
+1. Load centoids of clusters
+```{r}
+# .csv with centoids are saved next to the clustered climate data
+df15k_cent <- read.csv(file = file.path("clustered", "k15000_centoids.csv"))
+df15k_cent <- df15k_cent %>% rename(cluster = cluster_id)
+
+df5k_cent <- read.csv(file = file.path("clustered", "k5000_centoids.csv"))
+df6k_cent <- read.csv(file = file.path("clustered", "k6000_centoids.csv"))
+df7k_cent <- read.csv(file = file.path("clustered", "k7000_centoids.csv"))
+df8k_cent <- read.csv(file = file.path("clustered", "k8000_centoids.csv"))
+df9k_cent <- read.csv(file = file.path("clustered", "k9000_centoids.csv"))
+df10k_cent <- read.csv(file = file.path("clustered", "k10000_centoids.csv"))
+
+df5k_cent <- df5k_cent %>% rename(cluster = cluster_id)
+df6k_cent <- df6k_cent %>% rename(cluster = cluster_id)
+df7k_cent <- df7k_cent %>% rename(cluster = cluster_id)
+df8k_cent <- df8k_cent %>% rename(cluster = cluster_id)
+df9k_cent <- df9k_cent %>% rename(cluster = cluster_id)
+df10k_cent <- df10k_cent %>% rename(cluster = cluster_id)
+
+# df_5k$idx <- as.numeric(rownames(df_5k))
+# df_6k$idx <- as.numeric(rownames(df_6k))
+# df_7k$idx <- as.numeric(rownames(df_7k))
+# df_8k$idx <- as.numeric(rownames(df_8k))
+# df_9k$idx <- as.numeric(rownames(df_9k))
+# df_10k$idx <- as.numeric(rownames(df_10k))
+# df_15k$idx <- as.numeric(rownames(df_15k))
+```
+2. Identify closest point to the centoid for each cluster
+```{r}
+
+# left_join(
+#   x = df10k_cent,
+#   y = df_10k,# %>% select(lon, lat, max_tmp, min_tmp, prec, rad, vpd, idx),
+#   by = join_by(rep_index == idx),
+#   suffix = c("_cent","")
+# ) %>% select(-ends_with("_cent"))
+# df10k_cent[df10k_cent$rep_index %in% df_10k$idx,]
+# df_10k[df10k_cent$rep_index %in% df_10k$idx,]
+# df5k_centoids <- df_5k[df_5k$idx %in% df5k_cent$rep_index,]
+# df6k_centoids <- df_6k[df_6k$idx %in% df6k_cent$rep_index,]
+# df7k_centoids <- df_7k[df_7k$idx %in% df7k_cent$rep_index,]
+# df8k_centoids <- df_8k[df_8k$idx %in% df8k_cent$rep_index,]
+# df9k_centoids <- df_9k[df_9k$idx %in% df9k_cent$rep_index,]
+# df10k_centoids <- df_10k[df_10k$idx %in% df10k_cent$rep_index,]
+# df15k_centoids <- df_15k[df_15k$idx %in% df15k_cent$rep_index,]
+```
+3. Function to claculate the anomalies
+```{r}
+f_calcCentAnom <- function(df, df_centoids) {
+  climate_anomalies <- left_join(
+    x = df,
+    y = df_centoids,
+    by = "cluster",
+    suffix = c("", "_cent")
+  ) %>% 
+    mutate(
+      max_temp_anomaly = max_tmp - max_tmp_cent,
+      min_temp_anomaly = min_tmp - min_tmp_cent,
+      prec_anomaly = prec - prec_cent,
+      rad_anomaly = rad - rad_cent,
+      vpd_anomaly = vpd - vpd_cent
+    )
+  return(climate_anomalies)
+}
+```
+
+#### cont. Anomalie calculation
+```{r}
+# df_5k <- f_calcAnom(df_5k)
+# df_6k <- f_calcAnom(df_6k)
+# df_7k <- f_calcAnom(df_7k)
+# df_8k <- f_calcAnom(df_8k)
+# df_9k <- f_calcAnom(df_9k)
+# df_10k <- f_calcAnom(df_10k)
+# df_15k <- f_calcAnom(df_15k)
+
+# climate_sf <- f_create_grid(
+#   df = climate_anomalies,
+#   refsystem = crs_refsystem
+
+df_5k <- f_calcCentAnom(df_5k, df5k_cent)
+df_6k <- f_calcCentAnom(df_6k, df6k_cent)
+df_7k <- f_calcCentAnom(df_7k, df7k_cent)
+df_8k <- f_calcCentAnom(df_8k, df8k_cent)
+df_9k <- f_calcCentAnom(df_9k, df9k_cent)
+df_10k <- f_calcCentAnom(df_10k, df10k_cent)
+df_15k <- f_calcCentAnom(df_15k, df15k_cent)
+```
+## Anomaly histograms
+### Density - max_temp
+```{r}
+ggplot() +
+  theme_pubr() +
+  geom_density(
+    data = df_5k,
+    aes(x = max_temp_anomaly, col = "5k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_6k,
+    aes(x = max_temp_anomaly, col = "6k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_7k,
+    aes(x = max_temp_anomaly, col = "7k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_8k,
+    aes(x = max_temp_anomaly, col = "8k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_9k,
+    aes(x = max_temp_anomaly, col = "9k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_10k,
+    aes(x = max_temp_anomaly, col = "10k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_15k,
+    aes(x = max_temp_anomaly, col = "15k")
+  ) +
+  #xlim(-2.5,2.5) +
+  scale_color_manual(
+    name="Cluster sizes",
+    breaks=c("5k", "6k", "7k", "8k", "9k", "10k"),
+    values=c("5k" = "blue", "6k" = "yellow3",
+             "7k" = "orange", "8k" = "grey",
+             "9k" = "red2", "10k" = "black",
+             "15k" = "green")
+  )
+```
+### Density - min_temp
+```{r}
+ggplot() +
+  theme_pubr() +
+  geom_density(
+    data = df_5k,
+    aes(x = min_temp_anomaly, col = "5k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_6k,
+    aes(x = min_temp_anomaly, col = "6k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_7k,
+    aes(x = min_temp_anomaly, col = "7k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_8k,
+    aes(x = min_temp_anomaly, col = "8k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_9k,
+    aes(x = min_temp_anomaly, col = "9k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_10k,
+    aes(x = min_temp_anomaly, col = "10k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_15k,
+    aes(x = min_temp_anomaly, col = "15k")
+  ) +
+  #xlim(-2.5,2.5) +
+  scale_color_manual(
+    name="Cluster sizes",
+    breaks=c("5k", "6k", "7k", "8k", "9k", "10k"),
+    values=c("5k" = "blue", "6k" = "yellow3",
+             "7k" = "orange", "8k" = "grey",
+             "9k" = "red2", "10k" = "black", "15k" = "green")
+  )
+```
+### Density - prec
+```{r}
+ggplot() +
+  theme_pubr() +
+  geom_density(
+    data = df_5k,
+    aes(x = prec_anomaly, col = "5k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_6k,
+    aes(x = prec_anomaly, col = "6k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_7k,
+    aes(x = prec_anomaly, col = "7k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_8k,
+    aes(x = prec_anomaly, col = "8k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_9k,
+    aes(x = prec_anomaly, col = "9k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_10k,
+    aes(x = prec_anomaly, col = "10k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_15k,
+    aes(x = prec_anomaly, col = "15k"),
+    alpha = .5
+  ) +
+  #xlim(-100,100) +
+  scale_color_manual(
+    name="Cluster sizes",
+    breaks=c("5k", "6k", "7k", "8k", "9k", "10k"),
+    values=c("5k" = "blue", "6k" = "yellow3",
+             "7k" = "orange", "8k" = "grey",
+             "9k" = "red2", "10k" = "black",
+             "15k" = "green")
+  )
+```
+### Density - rad
+```{r}
+ggplot() +
+  theme_pubr() +
+  geom_density(
+    data = df_5k,
+    aes(x = rad_anomaly, col = "5k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_6k,
+    aes(x = rad_anomaly, col = "6k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_7k,
+    aes(x = rad_anomaly, col = "7k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_8k,
+    aes(x = rad_anomaly, col = "8k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_9k,
+    aes(x = rad_anomaly, col = "9k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_10k,
+    aes(x = rad_anomaly, col = "10k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_15k,
+    aes(x = rad_anomaly, col = "15k"),
+    alpha = .5
+  ) +
+  #xlim(-1.5,1.5) +
+  scale_color_manual(
+    name="Cluster sizes",
+    breaks=c("5k", "6k", "7k", "8k", "9k", "10k"),
+    values=c("5k" = "blue", "6k" = "yellow3",
+             "7k" = "orange", "8k" = "grey",
+             "9k" = "red2", "10k" = "black",
+             "15k" = "green")
+  )
+```
+
+### Density - vpd
+```{r}
+ggplot() +
+  theme_pubr() +
+  geom_density(
+    data = df_5k,
+    aes(x = vpd_anomaly, col = "5k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_6k,
+    aes(x = vpd_anomaly, col = "6k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_7k,
+    aes(x = vpd_anomaly, col = "7k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_8k,
+    aes(x = vpd_anomaly, col = "8k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_9k,
+    aes(x = vpd_anomaly, col = "9k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_10k,
+    aes(x = vpd_anomaly, col = "10k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_15k,
+    aes(x = vpd_anomaly, col = "15k"),
+    alpha = .5
+  ) +
+  #xlim(-0.02,0.02) +
+  scale_color_manual(
+    name="Cluster sizes",
+    breaks=c("5k", "6k", "7k", "8k", "9k", "10k"),
+    values=c("5k" = "blue", "6k" = "yellow3",
+             "7k" = "orange", "8k" = "grey",
+             "9k" = "red2", "10k" = "black",
+             "15k" = "green")
+  )
+```
+### Metrics for Anomalies
+```{r}
+summary(df_5k %>% dplyr::select(ends_with("anomaly")))
+sd(df_5k$max_temp_anomaly)
+sd(df_5k$min_temp_anomaly)
+sd(df_5k$prec_anomaly)
+sd(df_5k$rad_anomaly)
+sd(df_5k$vpd_anomaly)
+summary(df_6k %>% dplyr::select(ends_with("anomaly")))
+sd(df_6k$max_temp_anomaly)
+sd(df_6k$min_temp_anomaly)
+sd(df_6k$prec_anomaly)
+sd(df_6k$rad_anomaly)
+sd(df_6k$vpd_anomaly)
+summary(df_7k %>% dplyr::select(ends_with("anomaly")))
+sd(df_7k$max_temp_anomaly)
+sd(df_7k$min_temp_anomaly)
+sd(df_7k$prec_anomaly)
+sd(df_7k$rad_anomaly)
+sd(df_7k$vpd_anomaly)
+summary(df_8k %>% dplyr::select(ends_with("anomaly")))
+sd(df_8k$max_temp_anomaly)
+sd(df_8k$min_temp_anomaly)
+sd(df_8k$prec_anomaly)
+sd(df_8k$rad_anomaly)
+sd(df_8k$vpd_anomaly)
+summary(df_9k %>% dplyr::select(ends_with("anomaly")))
+sd(df_9k$max_temp_anomaly)
+sd(df_9k$min_temp_anomaly)
+sd(df_9k$prec_anomaly)
+sd(df_9k$rad_anomaly)
+sd(df_9k$vpd_anomaly)
+summary(df_10k %>% dplyr::select(ends_with("anomaly")))
+sd(df_10k$max_temp_anomaly)
+sd(df_10k$min_temp_anomaly)
+sd(df_10k$prec_anomaly)
+sd(df_10k$rad_anomaly)
+sd(df_10k$vpd_anomaly)
+summary(df_15k %>% dplyr::select(ends_with("anomaly")))
+sd(df_15k$max_temp_anomaly)
+sd(df_15k$min_temp_anomaly)
+sd(df_15k$prec_anomaly)
+sd(df_15k$rad_anomaly)
+sd(df_15k$vpd_anomaly)
+```
+
+## Plot Map
+```{r}
+crs_refsystem <- 31467
+
+df5k_sf <- f_create_grid(
+  df = df_5k,
+  refsystem = crs_refsystem
+)
+df10k_sf <- f_create_grid(
+  df = df_10k,
+  refsystem = crs_refsystem
+)
+df15k_sf <- f_create_grid(
+  df = df_15k,
+  refsystem = crs_refsystem
+)
+```
+
+```{r}
+# ggplot(data = df5k_sf) +
+#   geom_sf(aes(color = max_temp_anomaly), size = 1) +
+#   scale_color_gradient2(
+#     low = "blue",
+#     mid = "white",
+#     high = "red",
+#     midpoint = 0,
+#     limit = c(-2,2)
+#   ) +
+#   theme_minimal() +
+#   labs(
+#     title = "Max. Temperature Anomaly from Cluster Mean -5k",
+#     color = "Anomaly (°C)"
+#   )
+ggplot(data = df10k_sf) +
+  geom_sf(aes(color = max_temp_anomaly), size = 1) +
+  scale_color_gradient2(
+    low = "blue",
+    mid = "white",
+    high = "red",
+    midpoint = 0,
+    limit = c(-2,2)
+  ) +
+  theme_minimal() +
+  labs(
+    title = "Max. Temperature Anomaly from Cluster Mean -10k",
+    color = "Anomaly (°C)"
+  )
+# ggplot(data = df15k_sf) +
+#   geom_sf(aes(color = max_temp_anomaly), size = 1) +
+#   scale_color_gradient2(
+#     low = "blue",
+#     mid = "white",
+#     high = "red",
+#     midpoint = 0,
+#     limit = c(-2,2)
+#   ) +
+#   theme_minimal() +
+#   labs(
+#     title = "Max. Temperature Anomaly from Cluster Mean -15k",
+#     color = "Anomaly (°C)"
+#   )
+
+ggplot(data = df10k_sf) +
+  geom_sf(aes(color = prec_anomaly), size = 1) +
+  scale_color_gradient2(
+    low = "blue",
+    mid = "white",
+    high = "red",
+    midpoint = 0,
+    limit = c(-2,2)
+  ) +
+  theme_minimal() +
+  labs(
+    title = "Precipitation anomaly from cluster mean -10k",
+    color = "Anomaly (mm)"
+  )
+
+ggplot(data = df10k_sf) +
+  geom_sf(aes(color = prec), size = 1) +
+  theme_minimal()
+```
+### Create tiff with clusters
+```{r}
+# Create SpatRaster
+# rast_15k <- terra::rast(
+#   df_15k,# %>% dplyr::mutate(longitude = lon, latitude = lat),
+#   type = "xyz",
+#   crs = gauss_kruger_crs
+# )
+# # Plot to check
+# plot(rast_15k[["cluster"]])
+# 
+# rast_5k <- terra::rast(
+#   df_5k,
+#   type = "xyz",
+#   crs = gauss_kruger_crs
+# )
+# plot(rast_5k[["cluster"]])
+
+rast_10k <- terra::rast(
+  df_10k,
+  type = "xyz",
+  crs = gauss_kruger_crs
+)
+plot(rast_10k[["cluster"]])
+```
+
+```{r}
+# write .tiff file
+# terra::writeRaster(
+#   x = rast_15k,
+#   filename = file.path("tif","15k_clim_cl.tif"),
+#   overwrite = TRUE
+# )
+# terra::writeRaster(
+#   x = rast_5k,
+#   filename = file.path("tif","5k_clim_cl.tif"),
+#   overwrite = TRUE
+# )
+# terra::writeRaster(
+#   x = rast_10k,
+#   filename = file.path("tif","10k_clim_cl.tif"),
+#   overwrite = TRUE
+# )
+```
+
+For getting climate data on the 1km² scale, the 10k clusters will be used.
+
+# Creating reference raster
+Creating a raster that contains the coordinates and the associate cluster of every km² in Germany.
+```{r}
+df10k_clust <- read_csv(file = "clustered/k10000_clim_dat.csv")
+#ref_rast <- f_create_grid(df = df10k_clust, refsystem = crs_refsystem)
+
+ref_rast <- terra::rast(
+  df10k_clust,
+  type = "xyz",
+  crs = gauss_kruger_crs
+)
+plot(ref_rast[["prec"]])
+plot(ref_rast[["cluster"]])
+
+# terra::writeRaster(
+#   x = ref_rast,
+#   filename = "tif/reference_raster.tif"
+# )
+```

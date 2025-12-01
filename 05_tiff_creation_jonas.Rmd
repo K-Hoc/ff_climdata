@@ -1,0 +1,79 @@
+# Merging current climate data
+First libraries:
+```{r}
+library(tidyverse)
+library(terra)
+```
+Than setting path independent of operating system.
+```{r}
+if (.Platform$OS.type == "windows") {
+  cPath <- "F:/Data/climatedata/germany_1km_res/2_work"
+} else {
+  cPath <- "/data/public/Data/climatedata/germany_1km_res/2_work"
+}
+cPath <- normalizePath(cPath, winslash = "/")
+```
+## 1. Loading Files
+Loading two files:
+- k1000_centoids.csv (containing multi annual mean clim data for each cluster)
+- cluster_coords.csv (latitude and longitute of each cluster centioid)
+```{r}
+df_clim <- read_csv(
+  file = file.path(cPath, "clustered", "k10000_centoids.csv")
+)
+df_coords <- read_csv(
+  file = file.path(cPath, "cluster_coords.csv")
+)
+df_ger <- read_csv(
+  file = file.path(cPath, "clim_dat.csv")
+)
+df_gerClust <- read_csv(
+  file = file.path(cPath, "clustered", "k10000_clim_dat.csv")
+)
+# df_data <- inner_join(
+#   x = df_clim,
+#   y = df_coords,
+#   by = join_by(cluster_id == cluster)
+# ) %>% dplyr::select(-rep_index)
+
+df_data <- left_join(
+  x = df_gerClust,
+  y = df_clim,
+  by = join_by(cluster == cluster_id),
+  suffix = c("_point", "_cluster")
+)
+```
+Now the the centoids need to be identified and tagged with a TRUE/FALSE flag.
+```{r}
+df_coords$centoid <- TRUE
+df_data <- left_join(
+  x = df_data,
+  y = df_coords,
+  by = join_by(cluster == cluster, lon, lat)
+)
+df_data[is.na(df_data$centoid),]$centoid <- FALSE
+```
+Now that the centoids are marked and all the other data is combined, it can be transfered into a .tiff file and saved.
+
+## 2. Creating a .tiff
+```{r}
+raster <- terra::rast(
+  df_data, # %>% rename(x = lon, y = lat),
+  type = "xyz",
+  crs = "EPSG:31467"
+)
+# Plot to check
+plot(raster[["centoid"]])
+```
+## Saving to file
+```{r}
+terra::writeRaster(
+  x = raster,
+  filename = file.path("tif","cluster_clim.tif"),
+  overwrite = TRUE
+)
+write_csv(
+  x = df_data,
+  file = file.path("clustered", "multi_year_mean_climate1981_2010.csv")
+)
+```

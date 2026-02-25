@@ -1,38 +1,51 @@
-# Clusterin of Germany and climate data gathering
----
-The scripts in this directory perform a clustering and gathering of climate data from a spark database. During the first clustering step, climate data (1981-2010) is used to devide Germany in 10 000 clusters. In the secord step for each cluster climate data from 3 different climate models and 3 climate scenarios are gathered (for each day ranging from 01.01.1981 till 31.12.2100).
-## Clustering Germany using climate data
-Data from the DWD (German Weather Service) is used to create the clusters (maximum temperature, minimum temperature, global radiation, vapour pressure deficit - vpd).
+# Germany 1 km climate clusters — repository overview
 
-Done in scripts:
-- 01_clim_scr.Rmd
-- 02_cluster5-10k.py
-## Post clustering processing
-### Deviation of points from cluster
-Here the clustered climate data is processed, meaning the deviation from each point towards the centoid is calculated and a representative datapoint for each cluster is chosen. In the end a .csv file is created containing the information about the cluster centre and the representative plot.
+This repository contains scripts, data snapshots and helpers used to create and process 1 km climate clusters for Germany and to gather cluster-specific climate time series from model output.
 
-Done in scripts:
--  03_Centoids_LatLon.Rmd
-### Building reference to climate point ids
-The climate data works with point ids, which have also been used in the previous work for the 14 km² climate data. So the challenge is to map the coordinates of these 14 km² points to the 1 km² points and calculate the difference from each 1 km² to the 14 km² cell. In a first step all point_ids and coordinates for all climate point are gathered from the Spark database and stored in the point_coords.sqlite file. The point ids are used by the climate models as location identifiers.
+Key points
+- Purpose: cluster Germany into ~10k climate-representative units (1981–2010 baseline), compute bias/corrections and extract daily climate time series per cluster from model data (historical + RCP scenarios).
+- Inputs: DWD-derived observational variables (temperature, radiation, vapor pressure deficit, precipitation) and climate model outputs accessed via a Spark/SQL backend.
 
-The resolution of the climate models are not at a 1x1 km scale, so adjustments need to be made to even match the 10k clusters. Goal of this is for each cluster to have its own climate timeline. Correction is done in a few steps:
-1. Gathering 30 year periods of climate data and calculating a mean (1981-2010). Here the difficulty is that in the modelled climate, historic data ranges from 1980-2005, so that the last 5 years need to be taken from each of the 3 climate scenarios (2.6, 4.5, 8.5) and all of the 3 climate models.
-2. Calculating a correction factor for every cluster (10k correction factors)
+Repository structure (top-level)
+- `01_clim_scr.Rmd` — exploratory/preprocessing RMarkdown for climate scrubbing and preparation.
+- `02_cluster5-10k.py` — Python clustering script (produces clusters at various k values).
+- `03_post_clustering.Rmd` / `04_Centoid_LatLon.Rmd` — post-clustering analysis: select representative points and compute centroid/lat-lon summaries.
+- `05_tiff_creation.Rmd` — create spatial TIFFs from cluster results.
+- `06_bias_handling.Rmd` — compute bias/correction factors between model and reference climatologies.
+- `07_getClimData.R` — long-running data extraction from the Spark DB; applies bias corrections when writing cluster time series.
+- `08_Evaluate_clim_dat.R` — light evaluation/QA of the extracted climate datasets.
+- `clim_dat.csv`, `cluster_coords.csv` — summary CSVs used in analysis and mapping.
 
-Scripts:
-- 04_coord_ref.R
-- 06_bias_handling.Rmd
-## Gathering climate data from climate models
-Here for every cluster (10k) the climate data is gathered from the Spark db, resulting in 12 .sqlit files with 3 having around 8 GB and the other 9 around 33 GB each. During the data gathering the bias calculated in the previous step is used to change the climate values to be more cluster specific.
-For temperature (max_temp, min_temp), the temperature curve was changed (using addition - so adding the bias factor to the temperature), precipitation, vpd and rad were multiplied with the bias factor.
+Folders (will be created during processing)
+- `bias_tbl/` — bias tables and aggregated summaries per model (CSV files).
+- `clim_dbs/` — helper scripts for creating/organising SQLite databases; contains `sort.py` and `sort_sqlite.sh`.
+- `clustered/` — cluster outputs and per-cluster climate CSVs. Contains `k5000_...` to `k15000_...` variants and a `multi_year_mean_climate1981_2010.csv` baseline. Also contains dated snapshots (e.g. `20250513/`).
+- `output/` — miscellaneous outputs and interim files.
+- `tif/` — generated GeoTIFFs for spatial visualization.
 
-The script runs for about 2 Weeks (it might abort and needs to be restarted), but there might be ways to improve on this.
+## Notes on data and processing
+- Clustering: uses DWD-derived climate variables to create spatial clusters; representative points and centroid metadata are produced for each cluster.
+- Bias handling: mean climate differences (30-year baseline) are used to compute correction factors applied during extraction (temperatures typically adjusted additively; precipitation, vpd, radiation multiplicatively).
+- Extraction: `07_getClimData.R` queries the Spark/SQL backend to build per-cluster time series (1981–2100). The extraction can be long-running and may require restarts; outputs are large (multiple GB per DB file).
 
-Script:
-- 07_getClimData.R
-## Small evaluation
-Some evaluations on the .sqlit files
+Quick pointers
+- If you want to re-run clustering: inspect and run `02_cluster5-10k.py` and then the post-clustering notebooks for centroid selection.
+- For bias calculation and correction: see `06_bias_handling.Rmd` and files in `bias_tbl/`.
+- To (re)run extraction: `07_getClimData.R` — verify DB access, available disk space, and consider splitting work into manageable chunks.
 
-Script:
-08_Evaluate_clim_dat.R
+### Contact / authorship
+
+**Authors**: Kilian Hochholzer, Christina Dollinger, Marc Grünig, Rupert Seidl, Werner Rammer
+
+- Maintainer: repository owner (check git history) — open an issue or contact the project owner for access details to the Spark DB and runtimes.
+
+### Citation
+
+@article{hochholzer2026climatecluster,
+  title = {},
+  author = {},
+  journal = {Journal / Archive},
+  year = {2026},
+  doi = {INSERT_DOI_HERE},
+  url = {https://github.com/your-repo}
+}

@@ -10,9 +10,9 @@ library(readr)
 ## 1.  Set path to working environment independent of operating system
 ```{r}
 if (.Platform$OS.type == "windows") {
-  cPath <- "F:/Data/climatedata/germany_1km_res/2_work"
+  cPath <- "F:/data/climatedata/germany_1km_res/2_work"
 } else {
-  cPath <- "/data/public/Data/climatedata/germany_1km_res/2_work"
+  cPath <- "/data/public/data/climatedata/germany_1km_res/2_work"
 }
 cPath <- normalizePath(cPath, winslash = "/")
 ```
@@ -91,7 +91,7 @@ ggplot(data = dfCombi %>% pivot_longer(
     alpha = .5
   ) +
   facet_wrap(~difs, scales = "free") +
-  labs(title = "Difference to centoid") +
+  labs(title = "Difference to ref. point") +
   theme_pubr()
 
 ggplot(data = dfClDif %>% pivot_longer(
@@ -104,7 +104,7 @@ ggplot(data = dfClDif %>% pivot_longer(
     alpha = .5
   ) +
   facet_wrap(~difs, scales = "free") +
-  labs(title = "Difference to cluster mean") +
+  labs(title = "Difference to cluster centoid (mean)") +
   theme_pubr()
 ```
 ## 6.  Safe .csv file with centoid latitude and longitude

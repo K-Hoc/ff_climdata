@@ -1,0 +1,12 @@
+$cat .gitignore
+*.csv
+*.docx
+*.pyc
+test_images
+
+# Ignore some directorys (chace, tmps, big output directory)
+output/
+clustered/
+tif/
+clim_dbs/
+bias_tbl/

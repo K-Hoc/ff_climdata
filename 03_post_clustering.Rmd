@@ -1,0 +1,965 @@
+# Work with pyton .csv (post-cluster process)
+BEFORE CONTINUING, MAKE SURE THE "02_cluster5-10k.py" WAS RUN SUCCESSFULLY!
+Clustering was done via a python script, so the clusters for 5-10k are loaded from there.
+```{r}
+if (.Platform$OS.type == "windows") {
+  cPath <- "F:/data/climatedata/germany_1km_res/2_work"
+  # cRawPath <- "F:/data/climatedata/germany_1km_res/1_dataRaw"
+} else {
+  cPath <- "/data/public/data/climatedata/germany_1km_res/2_work"
+  # cRawPath <- "/data/public/data/climatedata/germany_1km_res/1_dataRaw"
+}
+cPath <- normalizePath(cPath, winslash = "/")
+# cRawPath <- normalizePath(cRawPath, winslash = "/")
+
+gauss_kruger_crs <- "EPSG:31467"
+```
+Loading libraries
+```{r}
+library(tidyverse)
+library(ggpubr)
+library(patchwork)
+library(flextable)
+```
+Load clustered climate data from .csv files.
+```{r}
+setwd(cPath)
+df_5k <- read.csv(file = file.path("clustered","k5000_clim_dat.csv"))
+df_6k <- read.csv(file = file.path("clustered","k6000_clim_dat.csv"))
+df_7k <- read.csv(file = file.path("clustered","k7000_clim_dat.csv"))
+df_8k <- read.csv(file = file.path("clustered","k8000_clim_dat.csv"))
+df_9k <- read.csv(file = file.path("clustered","k9000_clim_dat.csv"))
+df_10k <- read.csv(file = file.path("clustered","k10000_clim_dat.csv"))
+df_15k <- read.csv(file = file.path("clustered","k15000_clim_dat.csv"))
+```
+#### Calculate Anomalies
+##### Anomalies from cluster mean
+```{r}
+f_calcAnom <- function(dfclim) {
+  # Calculate cluster means for each variable
+  cluster_means <- dfclim %>%
+    group_by(cluster) %>%
+    summarise(
+      across(
+        c(max_tmp, min_tmp, prec, rad, vpd),
+        mean,
+        .names = "mean_{.col}"
+      )
+    )
+  
+  # Join the means back to the original data
+  climate_anomalies <- dfclim %>%
+    left_join(cluster_means, by = "cluster") %>%
+    mutate(
+      max_temp_anomaly = max_tmp - mean_max_tmp,
+      min_temp_anomaly = min_tmp - mean_min_tmp,
+      prec_anomaly = prec - mean_prec,
+      rad_anomaly = rad - mean_rad,
+      vpd_anomaly = vpd - mean_vpd
+    )
+  return(climate_anomalies)
+}
+
+f_create_grid <- function(df, refsystem, cell_size = 1000) {
+  # Create 1km buffer squares (0.5km radius in each direction)
+  l_sf <- st_as_sf(
+    x = df,
+    coords = c("lon", "lat"),
+    crs = refsystem
+  )
+
+  # Reproject to meters (for buffering), then buffer, then back to GK
+  l_grid <- l_sf %>%
+    st_buffer(
+      dist = cell_size / 2,
+      endCapStyle = "SQUARE"
+    ) # make square polygons
+
+  # Return grid
+  return(l_grid)
+}
+```
+##### Anomalies from cluster medoid
+Load centoids of clusters
+```{r}
+# .csv with centoids are saved next to the clustered climate data
+df15k_cent <- read.csv(file = file.path("clustered", "k15000_centoids.csv"))
+df15k_cent <- df15k_cent %>% rename(cluster = cluster_id)
+
+df5k_cent <- read.csv(file = file.path("clustered", "k5000_centoids.csv"))
+df6k_cent <- read.csv(file = file.path("clustered", "k6000_centoids.csv"))
+df7k_cent <- read.csv(file = file.path("clustered", "k7000_centoids.csv"))
+df8k_cent <- read.csv(file = file.path("clustered", "k8000_centoids.csv"))
+df9k_cent <- read.csv(file = file.path("clustered", "k9000_centoids.csv"))
+df10k_cent <- read.csv(file = file.path("clustered", "k10000_centoids.csv"))
+
+df5k_cent <- df5k_cent %>% rename(cluster = cluster_id)
+df6k_cent <- df6k_cent %>% rename(cluster = cluster_id)
+df7k_cent <- df7k_cent %>% rename(cluster = cluster_id)
+df8k_cent <- df8k_cent %>% rename(cluster = cluster_id)
+df9k_cent <- df9k_cent %>% rename(cluster = cluster_id)
+df10k_cent <- df10k_cent %>% rename(cluster = cluster_id)
+```
+
+Function to claculate the anomalies
+```{r}
+f_calcCentAnom <- function(df, df_centoids) {
+  climate_anomalies <- left_join(
+    x = df,
+    y = df_centoids,
+    by = "cluster",
+    suffix = c("", "_cent")
+  ) %>% 
+    mutate(
+      max_temp_anomaly = max_tmp - max_tmp_cent,
+      min_temp_anomaly = min_tmp - min_tmp_cent,
+      prec_anomaly = prec - prec_cent,
+      rad_anomaly = rad - rad_cent,
+      vpd_anomaly = vpd - vpd_cent
+    )
+  return(climate_anomalies)
+}
+```
+
+#### cont. Anomalie calculation
+Identify closest point to the centoid for each cluster
+```{r}
+df_5k <- f_calcCentAnom(df_5k, df5k_cent)
+df_6k <- f_calcCentAnom(df_6k, df6k_cent)
+df_7k <- f_calcCentAnom(df_7k, df7k_cent)
+df_8k <- f_calcCentAnom(df_8k, df8k_cent)
+df_9k <- f_calcCentAnom(df_9k, df9k_cent)
+df_10k <- f_calcCentAnom(df_10k, df10k_cent)
+df_15k <- f_calcCentAnom(df_15k, df15k_cent)
+```
+## Anomaly histograms
+### Density - max_temp
+```{r}
+ggplot() +
+  theme_pubr() +
+  geom_density(
+    data = df_5k,
+    aes(x = max_temp_anomaly, col = "5k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_6k,
+    aes(x = max_temp_anomaly, col = "6k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_7k,
+    aes(x = max_temp_anomaly, col = "7k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_8k,
+    aes(x = max_temp_anomaly, col = "8k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_9k,
+    aes(x = max_temp_anomaly, col = "9k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_10k,
+    aes(x = max_temp_anomaly, col = "10k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_15k,
+    aes(x = max_temp_anomaly, col = "15k")
+  ) +
+  #xlim(-2.5,2.5) +
+  scale_color_manual(
+    name="Cluster sizes",
+    breaks=c("5k", "6k", "7k", "8k", "9k", "10k", "15k"),
+    values=c("5k" = "#bfa19a", "6k" = "#62a2b3",
+             "7k" = "#7a5048", "8k" = "#452e2a",
+             "9k" = "#cd6548", "10k" = "#2d9eb6",
+             "15k" = "#0f0a0a")
+  )
+```
+### Density - min_temp
+```{r}
+ggplot() +
+  theme_pubr() +
+  geom_density(
+    data = df_5k,
+    aes(x = min_temp_anomaly, col = "5k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_6k,
+    aes(x = min_temp_anomaly, col = "6k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_7k,
+    aes(x = min_temp_anomaly, col = "7k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_8k,
+    aes(x = min_temp_anomaly, col = "8k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_9k,
+    aes(x = min_temp_anomaly, col = "9k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_10k,
+    aes(x = min_temp_anomaly, col = "10k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_15k,
+    aes(x = min_temp_anomaly, col = "15k")
+  ) +
+  #xlim(-2.5,2.5) +
+  scale_color_manual(
+    name="Cluster sizes",
+    breaks=c("5k", "6k", "7k", "8k", "9k", "10k", "15k"),
+    values=c("5k" = "blue", "6k" = "yellow3",
+             "7k" = "orange", "8k" = "grey",
+             "9k" = "red2", "10k" = "black", "15k" = "green")
+  )
+```
+### Density - prec
+```{r}
+ggplot() +
+  theme_pubr() +
+  geom_density(
+    data = df_5k,
+    aes(x = prec_anomaly, col = "5k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_6k,
+    aes(x = prec_anomaly, col = "6k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_7k,
+    aes(x = prec_anomaly, col = "7k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_8k,
+    aes(x = prec_anomaly, col = "8k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_9k,
+    aes(x = prec_anomaly, col = "9k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_10k,
+    aes(x = prec_anomaly, col = "10k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_15k,
+    aes(x = prec_anomaly, col = "15k"),
+    alpha = .5
+  ) +
+  #xlim(-100,100) +
+  scale_color_manual(
+    name="Cluster sizes",
+    breaks=c("5k", "6k", "7k", "8k", "9k", "10k", "15k"),
+    values=c("5k" = "blue", "6k" = "yellow3",
+             "7k" = "orange", "8k" = "grey",
+             "9k" = "red2", "10k" = "black",
+             "15k" = "green")
+  )
+```
+### Density - rad
+```{r}
+ggplot() +
+  theme_pubr() +
+  geom_density(
+    data = df_5k,
+    aes(x = rad_anomaly, col = "5k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_6k,
+    aes(x = rad_anomaly, col = "6k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_7k,
+    aes(x = rad_anomaly, col = "7k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_8k,
+    aes(x = rad_anomaly, col = "8k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_9k,
+    aes(x = rad_anomaly, col = "9k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_10k,
+    aes(x = rad_anomaly, col = "10k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_15k,
+    aes(x = rad_anomaly, col = "15k"),
+    alpha = .5
+  ) +
+  #xlim(-1.5,1.5) +
+  scale_color_manual(
+    name="Cluster sizes",
+    breaks=c("5k", "6k", "7k", "8k", "9k", "10k", "15k"),
+    values=c("5k" = "blue", "6k" = "yellow3",
+             "7k" = "orange", "8k" = "grey",
+             "9k" = "red2", "10k" = "black",
+             "15k" = "green")
+  )
+```
+
+### Density - vpd
+```{r}
+ggplot() +
+  theme_pubr() +
+  geom_density(
+    data = df_5k,
+    aes(x = vpd_anomaly, col = "5k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_6k,
+    aes(x = vpd_anomaly, col = "6k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_7k,
+    aes(x = vpd_anomaly, col = "7k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_8k,
+    aes(x = vpd_anomaly, col = "8k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_9k,
+    aes(x = vpd_anomaly, col = "9k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_10k,
+    aes(x = vpd_anomaly, col = "10k"),
+    alpha = .5
+  ) +
+  geom_density(
+    data = df_15k,
+    aes(x = vpd_anomaly, col = "15k"),
+    alpha = .5
+  ) +
+  #xlim(-0.02,0.02) +
+  scale_color_manual(
+    name="Cluster sizes",
+    breaks=c("5k", "6k", "7k", "8k", "9k", "10k", "15k"),
+    values=c("5k" = "blue", "6k" = "yellow3",
+             "7k" = "orange", "8k" = "grey",
+             "9k" = "red2", "10k" = "black",
+             "15k" = "green")
+  )
+```
+### Metrics for Anomalies
+```{r}
+summary(df_5k %>% dplyr::select(ends_with("anomaly")))
+sd(df_5k$max_temp_anomaly)
+sd(df_5k$min_temp_anomaly)
+sd(df_5k$prec_anomaly)
+sd(df_5k$rad_anomaly)
+sd(df_5k$vpd_anomaly)
+summary(df_6k %>% dplyr::select(ends_with("anomaly")))
+sd(df_6k$max_temp_anomaly)
+sd(df_6k$min_temp_anomaly)
+sd(df_6k$prec_anomaly)
+sd(df_6k$rad_anomaly)
+sd(df_6k$vpd_anomaly)
+summary(df_7k %>% dplyr::select(ends_with("anomaly")))
+sd(df_7k$max_temp_anomaly)
+sd(df_7k$min_temp_anomaly)
+sd(df_7k$prec_anomaly)
+sd(df_7k$rad_anomaly)
+sd(df_7k$vpd_anomaly)
+summary(df_8k %>% dplyr::select(ends_with("anomaly")))
+sd(df_8k$max_temp_anomaly)
+sd(df_8k$min_temp_anomaly)
+sd(df_8k$prec_anomaly)
+sd(df_8k$rad_anomaly)
+sd(df_8k$vpd_anomaly)
+summary(df_9k %>% dplyr::select(ends_with("anomaly")))
+sd(df_9k$max_temp_anomaly)
+sd(df_9k$min_temp_anomaly)
+sd(df_9k$prec_anomaly)
+sd(df_9k$rad_anomaly)
+sd(df_9k$vpd_anomaly)
+summary(df_10k %>% dplyr::select(ends_with("anomaly")))
+sd(df_10k$max_temp_anomaly)
+sd(df_10k$min_temp_anomaly)
+sd(df_10k$prec_anomaly)
+sd(df_10k$rad_anomaly)
+sd(df_10k$vpd_anomaly)
+summary(df_15k %>% dplyr::select(ends_with("anomaly")))
+sd(df_15k$max_temp_anomaly)
+sd(df_15k$min_temp_anomaly)
+sd(df_15k$prec_anomaly)
+sd(df_15k$rad_anomaly)
+sd(df_15k$vpd_anomaly)
+```
+
+## Plot Map
+```{r}
+crs_refsystem <- 31467
+
+df5k_sf <- f_create_grid(
+  df = df_5k,
+  refsystem = crs_refsystem
+)
+df10k_sf <- f_create_grid(
+  df = df_10k,
+  refsystem = crs_refsystem
+)
+df15k_sf <- f_create_grid(
+  df = df_15k,
+  refsystem = crs_refsystem
+)
+```
+
+```{r}
+ggplot(data = df10k_sf) +
+  geom_sf(aes(color = max_temp_anomaly), size = 1) +
+  scale_color_gradient2(
+    low = "blue",
+    mid = "white",
+    high = "red",
+    midpoint = 0,
+    limit = c(-2,2)
+  ) +
+  theme_minimal() +
+  labs(
+    title = "Max. Temperature Anomaly from Cluster Mean -10k",
+    color = "Anomaly (°C)"
+  )
+
+ggplot(data = df10k_sf) +
+  geom_sf(aes(color = prec_anomaly), size = 1) +
+  scale_color_gradient2(
+    low = "blue",
+    mid = "white",
+    high = "red",
+    midpoint = 0,
+    limit = c(-2,2)
+  ) +
+  theme_minimal() +
+  labs(
+    title = "Precipitation anomaly from cluster mean -10k",
+    color = "Anomaly (mm)"
+  )
+
+ggplot(data = df10k_sf) +
+  geom_sf(aes(color = prec), size = 1) +
+  theme_minimal()
+```
+### Create tiff with clusters
+```{r}
+# Create SpatRaster
+rast_15k <- terra::rast(
+  df_15k,# %>% dplyr::mutate(longitude = lon, latitude = lat),
+  type = "xyz",
+  crs = gauss_kruger_crs
+)
+# Plot to check
+plot(rast_15k[["cluster"]])
+
+rast_5k <- terra::rast(
+  df_5k,
+  type = "xyz",
+  crs = gauss_kruger_crs
+)
+plot(rast_5k[["cluster"]])
+
+rast_10k <- terra::rast(
+  df_10k,
+  type = "xyz",
+  crs = gauss_kruger_crs
+)
+plot(rast_10k[["cluster"]])
+```
+
+```{r}
+# write .tiff file
+# terra::writeRaster(
+#   x = rast_15k,
+#   filename = file.path("tif","15k_clim_cl.tif"),
+#   overwrite = TRUE
+# )
+# terra::writeRaster(
+#   x = rast_5k,
+#   filename = file.path("tif","5k_clim_cl.tif"),
+#   overwrite = TRUE
+# )
+# terra::writeRaster(
+#   x = rast_10k,
+#   filename = file.path("tif","10k_clim_cl.tif"),
+#   overwrite = TRUE
+# )
+```
+
+For getting climate data on the 1km² scale, the 10k clusters will be used.
+
+# Creating reference raster
+Creating a raster that contains the coordinates and the associate cluster of every km² in Germany.
+```{r}
+df10k_clust <- read_csv(file = "clustered/k10000_clim_dat.csv")
+#ref_rast <- f_create_grid(df = df10k_clust, refsystem = crs_refsystem)
+
+ref_rast <- terra::rast(
+  df10k_clust,
+  type = "xyz",
+  crs = gauss_kruger_crs
+)
+plot(ref_rast[["prec"]])
+plot(ref_rast[["cluster"]])
+
+# terra::writeRaster(
+#   x = ref_rast,
+#   filename = "tif/reference_raster.tif"
+# )
+```
+
+# Paper - Figures
+First create a dataframe for all cluster scenarios.
+```{r}
+df_5k$nr_cl <- as.factor(5000)
+df_6k$nr_cl <- as.factor(6000)
+df_7k$nr_cl <- as.factor(7000)
+df_8k$nr_cl <- as.factor(8000)
+df_9k$nr_cl <- as.factor(9000)
+df_10k$nr_cl <- as.factor(10000)
+df_15k$nr_cl <- as.factor(15000)
+
+df_clScen <- bind_rows(
+  df_5k,
+  df_6k,
+  df_7k,
+  df_8k,
+  df_9k,
+  df_10k,
+  df_15k
+)
+
+ldf_clScen <- df_clScen %>% pivot_longer(
+  cols = ends_with("_anomaly"),
+  names_to = "anomaly_param",
+  values_to = "anomaly_val"
+)
+
+cfacet_names <- c(
+  "max_temp_anomaly" = "max. temperature",
+  "min_temp_anomaly" = "min. temperature",
+  "prec_anomaly" = "precipitation",
+  "rad_anomaly" = "rad",
+  "vpd_anomaly" = "vpd"
+)
+```
+Plot cluster scenarios with density plot for anomalies.
+```{r}
+p_dens <- ggplot(data = ldf_clScen) +
+  geom_freqpoly(
+    aes(
+      x = anomaly_val,
+      colour = nr_cl
+    ),
+    bins = 100,
+    linewidth = 0.8,
+    alpha = 0.8
+  ) +
+  facet_wrap(
+    ~ anomaly_param,
+    ncol = 1,
+    nrow = 5,
+    scales = "free",
+    labeller = labeller(anomaly_param = cfacet_names)
+  ) +
+  labs(
+    colour = "Number of Clusters",
+    x = "Difference to cluster mean"
+  ) +
+  theme(
+    legend.position = "bottom",
+    plot.margin     = margin(2, 2, 2, 2),
+    panel.spacing   = unit(2, "pt"),
+    strip.text      = element_text(margin = margin(1, 1, 1, 1)),
+    legend.box.margin = margin(t = 0, r = 0, b = 0, l = 0),
+    legend.margin     = margin(0, 0, 0, 0)
+  ) +
+  scale_colour_viridis_d(
+    option = "plasma", # "turbo",
+    # direction = 1,
+    name = "Number of Clusters"
+  )
+p_dens
+```
+
+Creating a plot that shows all 3 maps in one.
+```{r}
+# ---- Compute common bounding box ----------------------------------------
+
+bboxes <- list(
+  st_bbox(df5k_sf),
+  st_bbox(df10k_sf),
+  st_bbox(df15k_sf)
+)
+
+xmin <- min(sapply(bboxes, function(x) x["xmin"]))
+xmax <- max(sapply(bboxes, function(x) x["xmax"]))
+ymin <- min(sapply(bboxes, function(x) x["ymin"]))
+ymax <- max(sapply(bboxes, function(x) x["ymax"]))
+
+coord_common <- coord_sf(
+  xlim = c(xmin, xmax),
+  ylim = c(ymin, ymax),
+  expand = FALSE
+)
+
+# ---- Common theme + color scale ----------------------------------------
+
+common_theme <- theme_pubr() +
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(hjust = 0.5, face = "bold")
+  )
+
+color_scale <- scale_color_viridis_c(
+  option = "plasma",
+  direction = 1,
+  name = "Cluster"
+)
+
+# ---- Build plots --------------------------------------------------------
+
+df5k_sf$nr_clst <- "5k"
+df10k_sf$nr_clst <- "10k"
+df15k_sf$nr_clst <- "15k"
+
+df5_15k <- bind_rows(
+  df5k_sf,
+  df10k_sf,
+  df15k_sf
+)
+
+p_left <- ggplot(df5_15k) +
+  facet_wrap(~nr_clst, nrow = 3, ncol = 1) +
+  # geom_sf(aes(color = cluster), size = 1) +
+  geom_sf(aes(color = cluster)) +
+  color_scale +
+  common_theme +
+  theme(
+    axis.text.x  = element_blank(),
+    axis.title.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.text.y =  element_blank(),
+    axis.title.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    legend.position = "bottom",
+    plot.margin = margin(2,2,2,2),
+    panel.spacing = unit(2, "pt"),
+    strip.text = element_text(margin = margin(1, 1, 1, 1))
+  )
+
+
+# ---- Add anomaly plots -------------------------------------------------
+p_dens <- p_dens + common_theme
+
+p_fin <- (p_left | p_dens) +
+  plot_annotation(tag_levels = "A") +
+  plot_layout(widths = c(1,2), guides = "collect") &
+  theme(
+    legend.position = "bottom",
+    legend.spacing = unit(2, "pt"),
+    plot.margin = margin(2,10,2,2)
+  )
+
+```
+
+```{r}
+# p_fin
+ggsave(
+  filename = file.path(getwd(), "output/tmp_fig3.png"),
+  plot = p_fin,
+  width = 210,
+  height = 297,
+  units = "mm",
+  dpi = 300,
+  bg = "white"
+)
+```
+
+## Calculating Metrics - 10k clusters
+Metrics to calculate: standard deviations, spatial range, relative variability.
+```{r}
+# mean an standard deviation
+cluster_sums <- df10k_sf %>% 
+  st_drop_geometry() %>% 
+  group_by(cluster) %>% 
+  summarise(
+    # central metrics (mean and standard deviation)
+    max_temp_mean = mean(max_tmp, na.rm = TRUE),
+    max_temp_sd = sd(max_tmp, na.rm = TRUE),
+    min_temp_mean = mean(min_tmp, na.rm = TRUE),
+    min_temp_sd = sd(min_tmp, na.rm = TRUE),
+    prec_mean = mean(prec, na.rm = TRUE),
+    prec_sd = sd(prec, na.rm = TRUE),
+    rad_mean = mean(rad, na.rm = TRUE),
+    rad_sd = sd(rad, na.rm = TRUE),
+    vpd_mean = mean(vpd, na.rm = TRUE),
+    vpd_sd = sd(vpd, na.rm = TRUE),
+    
+    # relative variability (coefficient of variation)
+    max_temp_cv = sd(max_tmp, na.rm = TRUE) / mean(max_tmp, na.rm = TRUE),
+    min_temp_cv = sd(min_tmp, na.rm = TRUE) / mean(min_tmp, na.rm = TRUE),
+    prec_cv = sd(prec, na.rm = TRUE) / mean(prec, na.rm = TRUE),
+    rad_cv = sd(rad, na.rm = TRUE) / mean(rad, na.rm = TRUE),
+    vpd_cv = sd(vpd, na.rm = TRUE) / mean(vpd, na.rm = TRUE)
+  ) %>% 
+  ungroup()
+
+anomaly_sums <- df10k_sf %>%
+  st_drop_geometry() %>% 
+  group_by(cluster) %>% 
+  summarise(
+    # central metrics (mean and standard deviation)
+    max_temp_mean = mean(max_temp_anomaly, na.rm = TRUE),
+    max_temp_sd = sd(max_temp_anomaly, na.rm = TRUE),
+    min_temp_mean = mean(min_temp_anomaly, na.rm = TRUE),
+    min_temp_sd = sd(min_temp_anomaly, na.rm = TRUE),
+    prec_mean = mean(prec_anomaly, na.rm = TRUE),
+    prec_sd = sd(prec_anomaly, na.rm = TRUE),
+    rad_mean = mean(rad_anomaly, na.rm = TRUE),
+    rad_sd = sd(rad_anomaly, na.rm = TRUE),
+    vpd_mean = mean(vpd_anomaly, na.rm = TRUE),
+    vpd_sd = sd(vpd_anomaly, na.rm = TRUE),
+    
+    # relative variability (coefficient of variation)
+    max_temp_cv = sd(max_temp_anomaly, na.rm = TRUE) / mean(max_temp_anomaly, na.rm = TRUE),
+    min_temp_cv = sd(min_temp_anomaly, na.rm = TRUE) / mean(min_temp_anomaly, na.rm = TRUE),
+    prec_cv = sd(prec_anomaly, na.rm = TRUE) / mean(prec_anomaly, na.rm = TRUE),
+    rad_cv = sd(rad_anomaly, na.rm = TRUE) / mean(rad_anomaly, na.rm = TRUE),
+    vpd_cv = sd(vpd_anomaly, na.rm = TRUE) / mean(vpd_anomaly, na.rm = TRUE)
+  ) %>% 
+  ungroup()
+```
+Summary of cluster and anomaly sums.
+```{r}
+summary(cluster_sums)
+summary(anomaly_sums)
+```
+
+### Cluster area
+```{r}
+area_stats <- df10k_sf %>% 
+  group_by(cluster) %>% 
+  summarise(
+    # hull = st_convex_hull(st_union(geometry)),
+    uni = st_union(geometry),
+    area_km2 = as.numeric(st_area(uni)) /1e6,
+    perimeter_km = st_perimeter(uni) / 1000, # Umfang in [km]
+    compactness = (4 * pi * as.numeric(area_km2)) / (as.numeric(perimeter_km)^2) # Edge to area ratio
+  ) %>% 
+  ungroup()
+
+summary(area_stats)
+# Compactness - Isoperimetric Quotient (4piA/P²)
+# Range 0 - 1
+# 1 = A perfect circle (maximum compactness)
+# ~0.785 (pi/4) = a perfect sqare
+# Near 0 = highly elongated, irregular or "spidery" shapes least compact
+
+# Build flextable for area stats
+l_area_stats <- area_stats %>%
+  select(area_km2, perimeter_km, compactness) %>% 
+  st_drop_geometry() %>% 
+  mutate(perimeter_km = as.numeric(perimeter_km)) %>% 
+  pivot_longer(
+    cols = c(area_km2, perimeter_km, compactness),
+    names_to   = "parameter",
+    values_to  = "value"
+  ) %>% 
+  group_by(parameter) %>%
+  summarise(
+    min = suppressWarnings(min(value, na.rm = TRUE)),
+    max = suppressWarnings(max(value, na.rm = TRUE)),
+    .groups = "drop"
+  ) %>% 
+  mutate(range = paste0(fmt_num(min), "–", fmt_num(max))) %>% 
+  select(parameter, range)
+
+ft_a <- flextable(l_area_stats) %>%
+  merge_v(j = "ecosystem") %>%
+  theme_booktabs() %>%
+  color(i = seq(2, nrow(l_area_stats), 2), color = "black", part = "body") %>%
+  bg(i = seq(2, nrow(l_area_stats), 2), bg = "#F9F9F9", part = "body") %>%
+  hline(i = c(3)) %>%
+  autofit() %>%
+  align(align = "center", part = "all") %>%
+  bold(part = "header")
+
+ft_a <- fit_to_width(ft_a, max_width = 6.5)  
+ft_a
+
+
+ph_area <- ggplot(data = area_stats) +
+  theme_minimal() +
+  geom_freqpoly(
+    aes(x = area_km2),
+    binwidth = 1
+  ) +
+  labs(x = "area [km²]", title = "Cluster area")
+ph_comp <- ggplot(data = area_stats) +
+  theme_minimal() +
+  geom_freqpoly(
+    aes(x = compactness),
+    binwidth = 0.01,
+  ) +
+  labs(title = "Cluster compactness")
+
+ph_area + ph_comp + plot_annotation(tag_levels = "A")
+ggsave(filename = file.path(getwd(), "output/fig3_areahisto.png"))
+```
+
+combining metrics into a table:
+```{r}
+# Helper function to format ranges consistently
+fmt_num <- function(x, digits = 2) {
+  # format numbers with fixed digits, trim unnecessary zeros
+  formatC(x, format = "f", digits = digits, drop0trailing = TRUE)
+}
+
+# 1) Select only the metric columns (drop cluster id)
+metrics_long <- cluster_sums %>%
+  select(-cluster) %>%
+  # 2) Pivot to long with regex capturing parameter and metric
+  #    Column names look like: max_temp_mean, max_temp_sd, max_temp_cv, etc.
+  pivot_longer(
+    everything(),
+    names_to   = c("parameter", "metric"),
+    names_pattern = "^(max_temp|min_temp|prec|rad|vpd)_(mean|sd|cv)$",
+    values_to  = "value"
+  )
+
+# 3) Compute min and max for each parameter × metric across all clusters
+minmax_tbl <- metrics_long %>%
+  group_by(metric, parameter) %>%
+  summarise(
+    min = suppressWarnings(min(value, na.rm = TRUE)),
+    max = suppressWarnings(max(value, na.rm = TRUE)),
+    .groups = "drop"
+  ) %>%
+  # 4) Build the "min–max" string with nice formatting
+  mutate(range = paste0(fmt_num(min), "–", fmt_num(max))) %>%
+  select(metric, parameter, range) %>%
+  # 5) Wider table: columns are parameters
+  pivot_wider(
+    names_from  = parameter,
+    values_from = range
+  ) %>%
+  # 6) Nice ordering and labeling for metrics
+  mutate(metric = recode(metric,
+                         mean = "mean",
+                         sd   = "sd",
+                         cv   = "relative variability")) %>%
+  # Optional: order rows in a conventional order
+  mutate(metric = factor(metric, levels = c("mean", "sd", "relative variability"))) %>%
+  arrange(metric) %>%
+  # Optional: nicer parameter labels (keep if you want short names)
+  rename(
+    max_temp = max_temp,
+    min_temp = min_temp,
+    prec     = prec,
+    rad      = rad,
+    vpd      = vpd
+  )
+
+minmax_tbl
+
+
+mean_range_tbl <- anomaly_sums %>%
+  summarise(across(
+    .cols = c(max_temp_mean, min_temp_mean, prec_mean, rad_mean, vpd_mean),
+    .fns  = list(min = ~min(.x, na.rm = TRUE),
+                 max = ~max(.x, na.rm = TRUE))
+  )) %>%
+  pivot_longer(
+    everything(),
+    names_to = c("parameter", "metric", ".value"),
+    names_pattern = "^(.*)_(.*)_(min|max)$"
+  ) %>%
+  mutate(
+    metric = "mean_range_anomaly",
+    range  = paste0(fmt_num(min), "–", fmt_num(max))
+  ) %>%
+  select(metric, parameter, range) %>%
+  pivot_wider(names_from = parameter, values_from = range)
+
+mean_range_tbl
+
+fin_tbl <- bind_rows(minmax_tbl, mean_range_tbl)
+
+
+ft <- flextable(fin_tbl) %>%
+  merge_v(j = "ecosystem") %>%
+  theme_booktabs() %>%
+  color(i = seq(2, nrow(fin_tbl), 2), color = "black", part = "body") %>%
+  bg(i = seq(2, nrow(fin_tbl), 2), bg = "#F9F9F9", part = "body") %>%
+  hline(i = c(4)) %>%
+  autofit() %>%
+  align(align = "center", part = "all") %>%
+  bold(part = "header")
+
+ft <- fit_to_width(ft, max_width = 6.5)  
+ft
+save_as_docx(ft, path  = file.path(getwd(),"output/metrics_tbl1.docx"))
+save_as_docx(ft_a, path = file.path(getwd(), "output/area_mtr_tbl.docx"))
+```
+
+
+```{r}
+area_stats %>% filter(area_km2 >= 20000) %>% dplyr::select(one_of("cluster")) %>% st_drop_geometry()
+
+
+ggplot(
+  data = df10k_sf %>%
+    filter(
+      cluster %in% (area_stats %>% filter(area_km2 >= 10000) %>% dplyr::select(one_of("cluster")) %>% st_drop_geometry() %>% dplyr::pull(cluster))
+    ) 
+) +
+  geom_sf(aes(color = cluster), size = 1) +
+  color_scale +
+  coord_common
+  # labs(title = "10k Clusters", x = NULL, y = "Latitude") +
+  # common_theme +
+  # theme(
+  #   axis.text.y  = element_blank(),
+  #   axis.title.y = element_blank(),
+  #   axis.ticks.y = element_blank()
+  # )
+
+ggplot(data = area_stats) +
+  geom_sf(aes(fill = cluster))
+```
+

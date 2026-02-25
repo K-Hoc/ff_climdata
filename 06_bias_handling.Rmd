@@ -24,12 +24,12 @@ library(progress)
 
 # Paths
 if (.Platform$OS.type == "windows") {
-  cPath <- "F:/Data/climatedata/germany_1km_res/2_work"
-  path <- "F:/Projects/FutureForest/FF_main/04_work/marc/"
+  cPath <- "F:/data/climatedata/germany_1km_res/2_work"
+  path <- "F:/projects/FutureForest/FF_main/04_work/marc/"
   path_dss <- "/data/dss/SVD/data/climate_database/spark_db_v3/"
 } else {
-  cPath <- "/data/public/Data/climatedata/germany_1km_res/2_work"
-  path <- "/data/public/Projects/FutureForest/FF_main/04_work/marc/"
+  cPath <- "/data/public/data/climatedata/germany_1km_res/2_work"
+  path <- "/data/public/projects/FutureForest/FF_main/04_work/marc/"
   path_dss <- "/data/dss/SVD/data/climate_database/spark_db_v3/"
 }
 cPath <- normalizePath(cPath, winslash = "/")
@@ -127,89 +127,7 @@ f_getPointID <- function(x, ref_rast) {
   return(ref_pnt_vec)
 }
 
-# f_getPointID <- function(x, rast, ref_tab){
-#   # extract the grid ID
-#   lon <- x$lon
-#   lat <- x$lat
-#   
-#   coords <- as.data.frame(cbind(lon, lat))
-#   point_extr <- terra::extract(rast, coords)[,2]
-#   
-#   na_indices <- which(is.na(point_extr))
-#   if(length(na_indices) > 0) {
-#     for (i in na_indices) {
-#       lon_i <- lon[i]
-#       lat_i <- lat[i]
-#       closest_grid <- ref_tab[which.min(abs(lon_i - ref_tab$gk_x) + abs(lat_i - ref_tab$gk_y)),]
-#       point_extr[i] <- as.numeric(closest_grid[1])
-#     }
-#   }
-#   
-#   return(point_extr)
-# }
 ```
-#### Parallel processing function
-```{r}
-# f_getPointID_parallel <- function(x, ref_rast) {
-#   coords <- x[, c("lat", "lon")]
-#   
-#   # Setup paralell backend
-#   plan(multisession, workers = 10)
-#   
-#   # Function to process one coordinate
-#   process_coord <- function(lat, lon) {
-#     p <- progressr::progressor()
-#     function(lat, lon) {
-#       on.exit(p())  # tick after each item
-#       
-#       # Transform coordinates
-#       coord <- vect(matrix(c(lon, lat), ncol = 2), crs = g_gaus_krueger)
-#       coord <- project(coord, g_wgs84)
-#       coord_mat <- crds(coord)
-#       
-#       # Find raster cell
-#       cell_id <- cellFromXY(ref_rast, coord_mat)
-#       cell_cnt <- xyFromCell(ref_rast, cell_id)
-#       ref_id <- terra::extract(ref_rast, cell_cnt)[[1]]
-#       
-#       # Handle missing data
-#       if (is.na(ref_id)) {
-#         pnt <- vect(coord_mat, type = "points", crs = g_wgs84)
-#         p_buff <- buffer(pnt, width = 14000)
-#         cropped_r <- crop(ref_rast, p_buff)
-#         
-#         cell_ids <- which(!is.na(values(cropped_r)))
-#         if (length(cell_ids) == 0) return(NA)
-#         
-#         ref_coord <- xyFromCell(cropped_r, cell_ids)
-#         ref_val <- values(cropped_r)[cell_ids]
-#         
-#         dists <- sqrt((ref_coord[,1] - coord_mat[1,1])^2 + (ref_coord[,2] - coord_mat[1,2])^2)
-#         closest_idx <- which.min(dists)
-#         
-#         return(ref_val[closest_idx])
-#       }
-#       return(ref_id)
-#     }
-#   }
-#   
-#   # Enable progress handling
-#   handlers(global = TRUE)
-#   p <- progressor(along = 1:nrow(coords))
-#   
-#   result <- with_progress({
-#     future_mapply(
-#       FUN = process_coord(coords$lat, coords$lon),
-#       lat = coords$lat,
-#       lon = coords$lon,
-#       future.seed = TRUE
-#     )
-#   })
-#   
-#   return(result)
-# }
-```
-
 
 *Setting up the reference raster and table:*
 ```{r}

@@ -5,17 +5,12 @@
 library(RSQLite)
 library(tidyverse)
 
-base_path <- "/data/public/Data/climatedata/germany_1km_res/2_work"
+base_path <- "/data/public/data/climatedata/germany_1km_res/2_work"
 
-# db.conn <- dbConnect(
-#   RSQLite::SQLite(),
-#   dbname = "/home/khochholzer/NAS/ff_climate_cluster_old/clim_dbs/Summer_25/climate_db_ICHEC-EC-EARTH_rcp_8_5_v4.sqlite"
-# )
 db.conn <- dbConnect(
   RSQLite::SQLite(),
   dbname = file.path(base_path, "clim_dbs", "climate_db_ICHEC-EC-EARTH_rcp_8_5_v4.sqlite")
 )
-#paste0(base_path, "clim_dbs", "climate_db_ICHEC-EC-EARTH_rcp_8_5_v4.sqlite" ) )
 
 tabs <- dbListTables(db.conn)
 

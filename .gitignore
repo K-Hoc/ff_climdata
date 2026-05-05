@@ -3,6 +3,11 @@ $cat .gitignore
 *.docx
 *.pyc
 test_images
+.Rhistory
+.01_clim_scr.Rmd.swp
+map_creation_with_functions.R
+(old)*.R
+
 
 # Ignore some directorys (chace, tmps, big output directory)
 output/
@@ -10,3 +15,6 @@ clustered/
 tif/
 clim_dbs/
 bias_tbl/
+.Rproj.user/
+gis/
+rosm.cache/

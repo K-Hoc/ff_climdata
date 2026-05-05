@@ -9,7 +9,7 @@ Than setting path independent of operating system.
 if (.Platform$OS.type == "windows") {
   cPath <- "F:/Data/climatedata/germany_1km_res/2_work"
 } else {
-  cPath <- "/data/public/Data/climatedata/germany_1km_res/2_work"
+  cPath <- "/data/public/data/climatedata/germany_1km_res/2_work"
 }
 cPath <- normalizePath(cPath, winslash = "/")
 ```
@@ -65,6 +65,29 @@ raster <- terra::rast(
 # Plot to check
 plot(raster[["centoid"]])
 ```
+### 2.1 Modulo .tiff
+```{r}
+df_modulo <- df_data %>% 
+  mutate(
+    # Stable integer id per original cluster
+    cluster_idx = as.integer(factor(cluster)),
+    # Modulo grouping (0..n_groups-1 -> then +1 to get 1..n_groups)
+    cluster_mod = ((cluster_idx - 1) %% n_groups) + 1,
+    cluster_mod = factor(cluster_mod)  # discrete mapping
+  ) %>% 
+  select(
+    lon, lat, cluster, cluster_mod
+  )
+rast_modu <- terra::rast(
+  df_modulo,
+  type = "xyz",
+  crs = "EPSG:31467"
+)
+# Plot to check
+plot(rast_modu[["cluster_mod"]])
+```
+
+
 ## Saving to file
 ```{r}
 terra::writeRaster(
@@ -75,5 +98,12 @@ terra::writeRaster(
 write_csv(
   x = df_data,
   file = file.path("clustered", "multi_year_mean_climate1981_2010.csv")
+)
+
+# Modulo raster
+terra::writeRaster(
+  x = rast_modu,
+  filename = file.path("tif", "modolu_cluster.tif"),
+  overwrite = TRUE
 )
 ```

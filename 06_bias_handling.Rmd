@@ -450,7 +450,14 @@ for (c_src in unique(dfModels$src)) {
 }
 df_bias <- df_biasii
 rm(df_biasii)
+```
 
+
+--The radiation values seem way to high! DWD has values ranging from 14-48 and aggregated spark values range from 3060-6028. So there has to be something missing.--
+**Issue fixed**, Caused by wrong DWD rasters for radiation. This was fixed by loading the radiation for every month , creating a a sum and fixing the difference in SI Unit (kWh/m² vs. MJ/m²/day).
+
+### Save biasi
+```{r}
 write_csv(
   x = df_bias %>% filter(src == "ICHEC-EC-EARTH"),
   file = file.path(cPath, "bias_tbl", "ICHEC-EC-EARTH_bias.csv")
@@ -464,5 +471,4 @@ write_csv(
   file = file.path(cPath, "bias_tbl", "NCC-NorESM1-M_bias.csv")
 )
 ```
---The radiation values seem way to high! DWD has values ranging from 14-48 and aggregated spark values range from 3060-6028. So there has to be something missing.--
-**Issue fixed**, Caused by wrong DWD rasters for radiation. This was fixed by loading the radiation for every month , creating a a sum and fixing the difference in SI Unit (kWh/m² vs. MJ/m²/day).
+

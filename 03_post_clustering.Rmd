@@ -16,10 +16,12 @@ gauss_kruger_crs <- "EPSG:31467"
 ```
 Loading libraries
 ```{r}
+library(terra)
 library(tidyverse)
 library(ggpubr)
 library(patchwork)
 library(flextable)
+library(sf)
 ```
 Load clustered climate data from .csv files.
 ```{r}
@@ -376,50 +378,127 @@ ggplot() +
              "15k" = "green")
   )
 ```
-### Metrics for Anomalies
+### Metrics for Anomalies (table 2)
+Calculate area mean and sd
 ```{r}
-summary(df_5k %>% dplyr::select(ends_with("anomaly")))
-sd(df_5k$max_temp_anomaly)
-sd(df_5k$min_temp_anomaly)
-sd(df_5k$prec_anomaly)
-sd(df_5k$rad_anomaly)
-sd(df_5k$vpd_anomaly)
-summary(df_6k %>% dplyr::select(ends_with("anomaly")))
-sd(df_6k$max_temp_anomaly)
-sd(df_6k$min_temp_anomaly)
-sd(df_6k$prec_anomaly)
-sd(df_6k$rad_anomaly)
-sd(df_6k$vpd_anomaly)
-summary(df_7k %>% dplyr::select(ends_with("anomaly")))
-sd(df_7k$max_temp_anomaly)
-sd(df_7k$min_temp_anomaly)
-sd(df_7k$prec_anomaly)
-sd(df_7k$rad_anomaly)
-sd(df_7k$vpd_anomaly)
-summary(df_8k %>% dplyr::select(ends_with("anomaly")))
-sd(df_8k$max_temp_anomaly)
-sd(df_8k$min_temp_anomaly)
-sd(df_8k$prec_anomaly)
-sd(df_8k$rad_anomaly)
-sd(df_8k$vpd_anomaly)
-summary(df_9k %>% dplyr::select(ends_with("anomaly")))
-sd(df_9k$max_temp_anomaly)
-sd(df_9k$min_temp_anomaly)
-sd(df_9k$prec_anomaly)
-sd(df_9k$rad_anomaly)
-sd(df_9k$vpd_anomaly)
-summary(df_10k %>% dplyr::select(ends_with("anomaly")))
-sd(df_10k$max_temp_anomaly)
-sd(df_10k$min_temp_anomaly)
-sd(df_10k$prec_anomaly)
-sd(df_10k$rad_anomaly)
-sd(df_10k$vpd_anomaly)
-summary(df_15k %>% dplyr::select(ends_with("anomaly")))
-sd(df_15k$max_temp_anomaly)
-sd(df_15k$min_temp_anomaly)
-sd(df_15k$prec_anomaly)
-sd(df_15k$rad_anomaly)
-sd(df_15k$vpd_anomaly)
+f_process_area <- function(df, crs_refsystem) {
+  # df %>%
+  #   f_create_grid(refsystem = crs_refsystem) %>%
+  #   group_by(cluster) %>%
+  #   summarise(
+  #     uni = st_union(geometry),
+  #     area_km2 = round(as.numeric(st_area(uni)) / 1e6, 3),
+  #     .groups = "drop"
+  #   ) %>%
+  #   mutate(
+  #     area_km2_mean = mean(area_km2),
+  #     area_km2_sd   = sd(area_km2)
+  #   )
+  
+  
+  cluster_areas <- df %>%
+    f_create_grid(refsystem = crs_refsystem) %>%
+    select(cluster, geometry) %>% 
+    group_by(cluster) %>%
+    summarise(
+      geom = st_combine(geometry),
+      area_km2 = as.numeric(st_area(geom)) / 1e6,
+      .groups = "drop"
+    ) %>% 
+    summarise(
+      area_km2_mean = mean(area_km2),
+      area_km2_sd   = sd(area_km2)
+    )
+  return(cluster_areas)
+
+}
+# df_area <- df_list %>%
+#   map(f_process_area, crs_refsystem = crs_refsystem) %>%
+#   list_rbind(names_to = "source_id")
+
+library(furrr)
+
+plan(multicore)  # or multicore on Linux/macOS
+
+df_area <- df_list %>%
+  future_map(f_process_area, crs_refsystem = crs_refsystem) %>%
+  list_rbind(names_to = "source_id")
+
+df_area <- df_area %>% mutate(
+  cluster = str_remove(source_id, "cluster")
+) %>% 
+  select(
+    -c(source_id, geom)
+  )
+
+```
+
+Calculate climatic means and sd
+```{r}
+# ---- STEP 1: Put dataframes into a list ----
+df_list <- list(
+  cluster5k = df_5k,
+  cluster6k = df_6k,
+  cluster7k = df_7k,
+  cluster8k = df_8k,
+  cluster9k = df_9k,
+  cluster10k = df_10k,
+  cluster15k = df_15k
+)
+
+# ---- STEP 2: Specify parameter columns ----
+parameter_cols <- c("max_temp_anomaly", "min_temp_anomaly", "prec_anomaly", "rad_anomaly", "vpd_anomaly")
+
+# ---- STEP 3: Function to compute mean ± sd for one dataframe ----
+f_summarize_mean_sd <- function(df, cols) {
+  r_df <- df %>%
+    summarise(
+      across(
+        all_of(cols),
+        ~ sprintf("%.3f ± %.3f", mean(.x, na.rm = TRUE), sd(.x, na.rm = TRUE))
+      )
+    )
+  return(r_df)
+}
+
+# ---- STEP 4: Apply summarization to all dataframes ----
+summary_table <- bind_rows(
+  map(df_list, f_summarize_mean_sd, cols = parameter_cols),
+  .id = "cluster"
+) %>% mutate(
+  cluster = str_remove(cluster, "cluster"),
+  storage = c("95.5", "115", "134", "153", "172", "191", "287")
+) %>% rename(
+  Cluster = cluster,
+  `Residual multi-annual maximum temperature [°C]` = max_temp_anomaly,
+  `Residual multi-annual minimum temperature [°C]` = min_temp_anomaly,
+  `Residual multi-annual precipitation [mm]` = prec_anomaly,
+  `Residual multi-annual global radiation [MJm-2day-1]` = rad_anomaly,
+  `Residual multi-annual vapour pressure deficit [kPa]` = vpd_anomaly,
+  `Storage requirement [GB]` = storage
+)
+
+summary_table <- left_join(
+  x = summary_table,
+  y = df_area %>% 
+    mutate(
+      `Mean cluster area [km²]` = sprintf("%.3f ± %.3f", area_km2_mean, area_km2_sd)
+    ) %>% select(-c(area_km2_mean, area_km2_sd)),
+  by = join_by(Cluster == cluster)
+)
+
+
+ft <- flextable(summary_table) %>%
+  #merge_v(j = "ecosystem") %>%
+  theme_booktabs() %>%
+  color(i = seq(2, nrow(summary_table), 2), color = "black", part = "body") %>%
+  bg(i = seq(2, nrow(summary_table), 2), bg = "#F9F9F9", part = "body") %>%
+  autofit() %>%
+  align(align = "center", part = "all") %>%
+  bold(part = "header")
+ft
+ft <- fit_to_width(ft, max_width = 6.5)
+flextable::save_as_docx(ft, path = file.path("output", "table2.docx"))
 ```
 
 ## Plot Map
@@ -479,7 +558,7 @@ ggplot(data = df10k_sf) +
 ```{r}
 # Create SpatRaster
 rast_15k <- terra::rast(
-  df_15k,# %>% dplyr::mutate(longitude = lon, latitude = lat),
+  df_15k, # %>% select(lon, lat, cluster),
   type = "xyz",
   crs = gauss_kruger_crs
 )
@@ -577,9 +656,11 @@ cfacet_names <- c(
   "vpd_anomaly" = "vpd"
 )
 ```
+## Fig. 2. Cluster maps and densitys plots
 Plot cluster scenarios with density plot for anomalies.
 ```{r}
 p_dens <- ggplot(data = ldf_clScen) +
+  geom_vline(linetype = 4, xintercept = 0) +
   geom_freqpoly(
     aes(
       x = anomaly_val,
@@ -601,6 +682,7 @@ p_dens <- ggplot(data = ldf_clScen) +
     x = "Difference to cluster mean"
   ) +
   theme(
+    legend.title.position = "top",
     legend.position = "bottom",
     plot.margin     = margin(2, 2, 2, 2),
     panel.spacing   = unit(2, "pt"),
@@ -615,7 +697,7 @@ p_dens <- ggplot(data = ldf_clScen) +
   )
 p_dens
 ```
-
+### Figure 2 creation
 Creating a plot that shows all 3 maps in one.
 ```{r}
 # ---- Compute common bounding box ----------------------------------------
@@ -641,6 +723,7 @@ coord_common <- coord_sf(
 
 common_theme <- theme_pubr() +
   theme(
+    legend.title.position = "top",
     legend.position = "bottom",
     plot.title = element_text(hjust = 0.5, face = "bold")
   )
@@ -657,58 +740,160 @@ df5k_sf$nr_clst <- "5k"
 df10k_sf$nr_clst <- "10k"
 df15k_sf$nr_clst <- "15k"
 
+# df5_15k <- bind_rows(
+#   df5k_sf,
+#   df10k_sf,
+#   df15k_sf
+# ) %>% 
+#   mutate(
+#     nr_clst = factor(.$nr_clst, levels = c("5k", "10k", "15k"))
+#   )
+
+# Choose how many colour groups you can actually see
+n_groups <- 12
+
 df5_15k <- bind_rows(
-  df5k_sf,
-  df10k_sf,
-  df15k_sf
-)
+  df5k_sf %>% mutate(nr_clst = "5k"),
+  df10k_sf %>% mutate(nr_clst = "10k"),
+  df15k_sf %>% mutate(nr_clst = "15k")
+) %>%
+  mutate(
+    nr_clst = factor(nr_clst, levels = c("5k", "10k", "15k")),
+    # Stable integer id per original cluster
+    cluster_idx = as.integer(factor(cluster)),
+    # Modulo grouping (0..n_groups-1 -> then +1 to get 1..n_groups)
+    cluster_mod = ((cluster_idx - 1) %% n_groups) + 1,
+    cluster_mod = factor(cluster_mod)  # discrete mapping
+  )
 
 p_left <- ggplot(df5_15k) +
   facet_wrap(~nr_clst, nrow = 3, ncol = 1) +
-  # geom_sf(aes(color = cluster), size = 1) +
-  geom_sf(aes(color = cluster)) +
-  color_scale +
+  geom_sf(aes(color = cluster_mod), size = 1) + # 0.2) +
+  MetBrewer::scale_color_met_d("Redon") + #, guide = "none") +
+  coord_common +
   common_theme +
   theme(
     axis.text.x  = element_blank(),
     axis.title.x = element_blank(),
     axis.ticks.x = element_blank(),
-    axis.text.y =  element_blank(),
+    axis.text.y  = element_blank(),
     axis.title.y = element_blank(),
     axis.ticks.y = element_blank(),
-    legend.position = "bottom",
+    legend.position = "none", # "right",
     plot.margin = margin(2,2,2,2),
     panel.spacing = unit(2, "pt"),
     strip.text = element_text(margin = margin(1, 1, 1, 1))
   )
-
 
 # ---- Add anomaly plots -------------------------------------------------
 p_dens <- p_dens + common_theme
 
 p_fin <- (p_left | p_dens) +
   plot_annotation(tag_levels = "A") +
-  plot_layout(widths = c(1,2), guides = "collect") &
-  theme(
-    legend.position = "bottom",
-    legend.spacing = unit(2, "pt"),
-    plot.margin = margin(2,10,2,2)
-  )
+  plot_layout(widths = c(1,2)) #& #, guides = "collect") &
+  # theme(
+  #   legend.position = "bottom",
+  #   legend.spacing = unit(1, "pt"),
+  #   plot.margin = margin(2,10,2,2)
+  # )
 
+# ggsave(
+#   filename = file.path(getwd(), "output/tmp_fig2.png"),
+#   plot = p_fin,
+#   width = 100,
+#   height = 200,
+#   units = "mm",
+#   dpi = 100
+# )
+
+p_fin
 ```
 
 ```{r}
-# p_fin
 ggsave(
-  filename = file.path(getwd(), "output/tmp_fig3.png"),
+  filename = file.path(getwd(), "output/Fig2.tiff"),
   plot = p_fin,
-  width = 210,
-  height = 297,
+  width = 190,
+  height = 280,
   units = "mm",
-  dpi = 300,
-  bg = "white"
+  dpi = 500
 )
 ```
+## Experimenting with map visualization
+### Modulo to shift colourspace
+```{r}
+library(dplyr)
+library(ggplot2)
+library(MetBrewer)
+library(paletteer)
+# library(viridisLite)  # just for palette length if you want
+# library(viridis)    # if you want scale_* functions
+
+# Choose how many colour groups you can actually see
+n_groups <- 12
+
+df5_15k <- bind_rows(
+  df5k_sf %>% mutate(nr_clst = "5k"),
+  df10k_sf %>% mutate(nr_clst = "10k"),
+  df15k_sf %>% mutate(nr_clst = "15k")
+) %>%
+  mutate(
+    nr_clst = factor(nr_clst, levels = c("5k", "10k", "15k")),
+    # Stable integer id per original cluster
+    cluster_idx = as.integer(factor(cluster)),
+    # Modulo grouping (0..n_groups-1 -> then +1 to get 1..n_groups)
+    cluster_mod = ((cluster_idx - 1) %% n_groups) + 1,
+    cluster_mod = factor(cluster_mod)  # discrete mapping
+  )
+
+# # A discrete Viridis scale; use _d for discrete, not _c
+# color_scale_discrete <- scale_color_viridis_d(
+#   option = "plasma",
+#   direction = 1,
+#   name = paste0("Cluster (mod ", n_groups, ")")
+# )
+
+p_left <- ggplot(df5_15k) +
+  facet_wrap(~nr_clst, nrow = 3, ncol = 1) +
+  geom_sf(aes(color = cluster_mod), size = 0.2) +
+  # color_scale_discrete +
+  # scale_color_discrete() +
+  # paletteer::scale_color_paletteer_d("dichromat::Categorical_12") +
+  # MetBrewer::scale_color_met_d("Signac") +
+  MetBrewer::scale_color_met_d("Redon") +
+  coord_common +
+  common_theme +
+  theme(
+    axis.text.x  = element_blank(),
+    axis.title.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.text.y  = element_blank(),
+    axis.title.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    legend.position = "none", # "right",
+    plot.margin = margin(2,2,2,2),
+    panel.spacing = unit(2, "pt"),
+    strip.text = element_text(margin = margin(1, 1, 1, 1))
+  )
+
+p_left
+```
+
+```{r}
+p_fin <- (p_left | p_dens) +
+  plot_annotation(tag_levels = "A") +
+  plot_layout(widths = c(1,2))
+
+ggsave(
+  filename = file.path(getwd(), "output/Fig2.tiff"),
+  plot = p_fin,
+  width = 190,
+  height = 280,
+  units = "mm",
+  dpi = 500
+)
+```
+
 
 ## Calculating Metrics - 10k clusters
 Metrics to calculate: standard deviations, spatial range, relative variability.
@@ -770,16 +955,21 @@ summary(cluster_sums)
 summary(anomaly_sums)
 ```
 
-### Cluster area
+### Cluster area - Table 3 + Figure 3
+Compactness - Isoperimetric Quotient (4piA/P²)
+- Range 0 - 1
+- 1 = A perfect circle (maximum compactness)
+- ~0.785 (pi/4) = a perfect square
+- Near 0 = highly elongated, irregular or "spidery" shapes least compact
 ```{r}
 area_stats <- df10k_sf %>% 
   group_by(cluster) %>% 
   summarise(
     # hull = st_convex_hull(st_union(geometry)),
     uni = st_union(geometry),
-    area_km2 = as.numeric(st_area(uni)) /1e6,
+    area_km2 = round(as.numeric(st_area(uni)) /1e6, 3),
     perimeter_km = st_perimeter(uni) / 1000, # Umfang in [km]
-    compactness = (4 * pi * as.numeric(area_km2)) / (as.numeric(perimeter_km)^2) # Edge to area ratio
+    compactness = round((4 * pi * as.numeric(area_km2)) / (as.numeric(perimeter_km)^2), 3) # Edge to area ratio
   ) %>% 
   ungroup()
 
@@ -806,7 +996,7 @@ l_area_stats <- area_stats %>%
     max = suppressWarnings(max(value, na.rm = TRUE)),
     .groups = "drop"
   ) %>% 
-  mutate(range = paste0(fmt_num(min), "–", fmt_num(max))) %>% 
+  mutate(range = paste0(min, "–", max)) %>% 
   select(parameter, range)
 
 ft_a <- flextable(l_area_stats) %>%
@@ -822,26 +1012,155 @@ ft_a <- flextable(l_area_stats) %>%
 ft_a <- fit_to_width(ft_a, max_width = 6.5)  
 ft_a
 
+mean(area_stats$area_km2)
+sd(area_stats$area_km2)
+```
 
-ph_area <- ggplot(data = area_stats) +
-  theme_minimal() +
-  geom_freqpoly(
-    aes(x = area_km2),
-    binwidth = 1
-  ) +
-  labs(x = "area [km²]", title = "Cluster area")
+#### Figure 3
+Creating figure 3 - calculating some summary statistics and after that plotting.
+```{r fig3_summary_stat}
+area_stats_summary <- area_stats %>%
+  summarise(
+    area_med = median(area_km2, na.rm = TRUE),
+    area_p05 = quantile(area_km2, 0.05, na.rm = TRUE),
+    area_p25 = quantile(area_km2, 0.25, na.rm = TRUE),
+    area_p75 = quantile(area_km2, 0.75, na.rm = TRUE),
+    area_p95 = quantile(area_km2, 0.95, na.rm = TRUE),
+
+    comp_med = median(compactness, na.rm = TRUE),
+    comp_p05 = quantile(compactness, 0.05, na.rm = TRUE),
+    comp_p25 = quantile(compactness, 0.25, na.rm = TRUE),
+    comp_p75 = quantile(compactness, 0.75, na.rm = TRUE),
+    comp_p95 = quantile(compactness, 0.95, na.rm = TRUE),
+
+    per_med = median(as.numeric(perimeter_km), na.rm = TRUE),
+    per_p05 = quantile(as.numeric(perimeter_km), 0.05, na.rm = TRUE),
+    per_p25 = quantile(as.numeric(perimeter_km), 0.25, na.rm = TRUE),
+    per_p75 = quantile(as.numeric(perimeter_km), 0.75, na.rm = TRUE),
+    per_p95 = quantile(as.numeric(perimeter_km), 0.95, na.rm = TRUE)
+  )
+```
+Creating the figures and saving them to file.
+```{r}
+ph_area <- ggplot(data = area_stats, aes(x = area_km2)) +
+  ggpubr::theme_pubr() + #theme_minimal() +
+  geom_freqpoly(binwidth = 1) +
+  # geom_vline(
+  #   xintercept = area_stats_summary$area_med,
+  #   linetype = "solid", linewidth = 0.7
+  # ) +
+  labs(x = "area [km²]", title = "Cluster area", y = "count") +
+  geom_label(
+    data = data.frame(
+      x = Inf, y = Inf,
+      label = 
+        sprintf(
+          "Median: %.2f\n05%%: %.2f\n25%%: %.2f\n75%%: %.2f\n95%%: %.2f",
+          area_stats_summary$area_med,
+          area_stats_summary$area_p05,
+          area_stats_summary$area_p25,
+          area_stats_summary$area_p75,
+          area_stats_summary$area_p95
+        )
+    ),
+    aes(x = x, y = y, label = label),
+    inherit.aes = FALSE,
+    # Position of box
+    hjust = 1.1, vjust = 1.2,
+    family = "mono",
+    lineheight = 1.1,
+    size = 4.5,
+    label.size = 0.2
+  )
+
+
 ph_comp <- ggplot(data = area_stats) +
-  theme_minimal() +
+  ggpubr::theme_pubr() + #theme_minimal() +
   geom_freqpoly(
     aes(x = compactness),
     binwidth = 0.01,
   ) +
-  labs(title = "Cluster compactness")
+  # geom_vline(
+  #   xintercept = area_stats_summary$comp_med,
+  #   linetype = "solid", linewidth = 0.7
+  # ) +
+  labs(title = "Cluster compactness", y = "count") +
+  geom_label(
+    data = data.frame(
+      x = Inf, y = Inf,
+      label = 
+        sprintf(
+          "Median: %.2f\n05%%: %.2f\n25%%: %.2f\n75%%: %.2f\n95%%: %.2f",
+          area_stats_summary$comp_med,
+          area_stats_summary$comp_p05,
+          area_stats_summary$comp_p25,
+          area_stats_summary$comp_p75,
+          area_stats_summary$comp_p95
+        )
+    ),
+    aes(x = x, y = y, label = label),
+    inherit.aes = FALSE,
+    # Position of box
+    hjust = 1.1, vjust = 1.2,
+    family = "mono",
+    lineheight = 1.1,
+    size = 4.5,
+    label.size = 0.2
+  )
 
-ph_area + ph_comp + plot_annotation(tag_levels = "A")
-ggsave(filename = file.path(getwd(), "output/fig3_areahisto.png"))
+
+ph_per <- ggplot(data = area_stats) +
+  ggpubr::theme_pubr() + #theme_minimal() +
+  geom_freqpoly(
+    aes(x = as.numeric(perimeter_km)),
+    binwidth = 10,
+  ) +
+  # geom_vline(
+  #   xintercept = area_stats_summary$per_med,
+  #   linetype = "solid", linewidth = 0.7
+  # ) +
+  labs(x = "perimeter [km]", title = "Cluster perimeter", y = "count") +
+  geom_label(
+    data = data.frame(
+      x = Inf, y = Inf,
+      label = 
+        sprintf(
+          "Median: %.2f\n05%%: %.2f\n25%%: %.2f\n75%%: %.2f\n95%%: %.2f",
+          area_stats_summary$per_med,
+          area_stats_summary$per_p05,
+          area_stats_summary$per_p25,
+          area_stats_summary$per_p75,
+          area_stats_summary$per_p95
+        )
+    ),
+    aes(x = x, y = y, label = label),
+    inherit.aes = FALSE,
+    # Position of box
+    hjust = 1.1, vjust = 1.2,
+    family = "mono",
+    lineheight = 1.1,
+    size = 4.5,
+    label.size = 0.2
+  )
+
+ph_area + ph_comp + ph_per + plot_annotation(tag_levels = "A")
+# ggsave(
+#   filename = file.path(getwd(), "output/fig3_areahisto.png"),
+#   scale = 4,
+#   width = 50,
+#   height = 25,
+#   units = "mm"
+# )
+ggsave(
+  filename = file.path(getwd(), "output/Figure3.tiff"),
+  scale = 3,
+  width = 90,
+  height = 45,
+  units = "mm",
+  dpi = 500
+)
 ```
-
+#### Table 3
 combining metrics into a table:
 ```{r}
 # Helper function to format ranges consistently
@@ -933,7 +1252,7 @@ ft <- flextable(fin_tbl) %>%
 
 ft <- fit_to_width(ft, max_width = 6.5)  
 ft
-save_as_docx(ft, path  = file.path(getwd(),"output/metrics_tbl1.docx"))
+save_as_docx(ft, path  = file.path(getwd(),"output/metrics_tbl3.docx"))
 save_as_docx(ft_a, path = file.path(getwd(), "output/area_mtr_tbl.docx"))
 ```
 

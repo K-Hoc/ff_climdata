@@ -11,19 +11,20 @@ library(rnaturalearth)
 library(rosm)
 library(elevatr)
 library(patchwork)
+library(tidyterra)
 
 ############################################
 # Global settings
 ############################################
-CRS_WGS84 <- "EPSG:4326"
-CRS_GK3   <- "EPSG:31467"
-
+CRS_WGS84 <- "EPSG:4326"  # storage / input only
+CRS_GK3   <- "EPSG:31467" # legacy DWD
+CRS_PROJ  <- "EPSG:3035"  # plotting + raster math
 
 ############################################
 # Helper functions
 ############################################
-
-load_country <- function(name, crs = CRS_WGS84) {
+# Load country boundary
+load_country <- function(name, crs = CRS_PROJ) {
   ne_countries(
     country = name,
     scale = "medium",
@@ -32,6 +33,7 @@ load_country <- function(name, crs = CRS_WGS84) {
     st_transform(crs)
 }
 
+# Crop raster to country outline
 crop_mask <- function(r, country_sf) {
   v <- vect(country_sf)
   r |>
@@ -39,11 +41,12 @@ crop_mask <- function(r, country_sf) {
     mask(v)
 }
 
+# Raster prejection
 fix_and_project_raster <- function(
     r,
     country_sf,
     src_crs,
-    dst_crs = CRS_WGS84,
+    dst_crs = CRS_PROJ,
     method = "bilinear"
 ) {
   crs(r) <- src_crs
@@ -55,53 +58,53 @@ fix_and_project_raster <- function(
     project(dst_crs, method = method)
 }
 
+# Create dataframe from raster
 raster_to_df <- function(r, value_name = "value", transform = identity) {
   as.data.frame(r, xy = TRUE, na.rm = TRUE) |>
     rename(!!value_name := 3) |>
     mutate(!!value_name := transform(.data[[value_name]]))
 }
 
-compute_hillshade <- function(dem,
-                              crs_metric = CRS_GK3,
-                              crs_out = CRS_WGS84) {
-  dem_m <- project(dem, crs_metric)
+# Computing hillshade
+compute_hillshade <- function(dem) {
+  dem_m <- project(dem, CRS_PROJ)
+  
   slope  <- terrain(dem_m, "slope", unit = "radians")
   aspect <- terrain(dem_m, "aspect", unit = "radians")
-  shade(slope, aspect) |> project(crs_out)
+  
+  shade(slope, aspect)
 }
 
-plot_temperature_map <- function(
-    temp_df,
-    hill_df,
-    country_sf,
-    osm_bg,
+# Function to plot temperature map
+plot_temperature_map_spat <- function(
+    temp_rast,      # SpatRaster (projected, e.g. EPSG:3035)
+    hill_rast,      # SpatRaster (same CRS)
+    country_sf,     # sf (same CRS)
+    osm_bg,         # SpatRaster (same CRS)
     title
 ) {
   bbox <- st_bbox(country_sf)
   
   ggplot() +
-    annotation_spatial(osm_bg) +
+    # OSM background
+    # annotation_spatial(osm_bg) +
     
-    geom_raster(
-      data = hill_df,
-      aes(x = x, y = y, fill = hillshade),
-      alpha = 0.4
-    ) +
+    # Hillshade
+    geom_spatraster(data = hill_rast, alpha = 0.4) +
     scale_fill_gradient(
       low = "black",
       high = "white",
+      na.value = "white",
       guide = "none"
     ) +
     
     ggnewscale::new_scale_fill() +
     
-    geom_raster(
-      data = temp_df,
-      aes(x = x, y = y, fill = temp),
-      alpha = 0.8
-    ) +
-    scale_fill_viridis_c(name = "Temperature (°C)") +
+    # Temperature raster
+    geom_spatraster(data = temp_rast, alpha = 0.75) +
+    scale_fill_viridis_c(name = "Temperature (°C)", na.value = "white") +
     
+    # Country outline
     geom_sf(
       data = country_sf,
       fill = NA,
@@ -109,19 +112,11 @@ plot_temperature_map <- function(
       linewidth = 0.8
     ) +
     
-    annotation_north_arrow(
-      location = "tl",
-      which_north = "true",
-      pad_x = unit(0.35, "cm"),
-      pad_y = unit(0.35, "cm"),
-      height = unit(1.2, "cm"),
-      width = unit(1, "cm"),
-      style = north_arrow_orienteering
-    ) +
-    
+    # Correct projected coordinates
     coord_sf(
-      xlim = bbox[c("xmin", "xmax")],
-      ylim = bbox[c("ymin", "ymax")],
+      crs = st_crs(country_sf),
+      xlim = c(bbox["xmin"], bbox["xmax"]),
+      ylim = c(bbox["ymin"], bbox["ymax"]),
       expand = FALSE
     ) +
     
@@ -129,10 +124,12 @@ plot_temperature_map <- function(
     theme_minimal() +
     theme(
       legend.position = "none",
-      panel.grid      = element_blank(),
-      axis.text       = element_blank(),
-      axis.ticks      = element_blank(),
-      axis.title      = element_blank()
+      panel.grid = element_blank(),
+      panel.background = element_rect(fill = "white", colour = NA),
+      plot.background = element_rect(fill = "white", colour = NA),      
+      axis.text = element_blank(),
+      axis.ticks = element_blank(),
+      axis.title = element_blank()
     )
 }
 
@@ -149,13 +146,22 @@ country <- load_country("Germany")
 #------------------------------------------------
 temp_dwd_raw  <- rast("../1_dataRaw/raster/TADXMM_17_1981_30.asc")
 temp_euro_raw <- rast("../../euro-cordex/historical/mean_historic_mat.tif")
+temp_10k <- rast("tif/10k_clim_cl.tif")
 
-# EURO‑CORDEX (already WGS84)
-temp_euro <- crop_mask(temp_euro_raw, country)
+# EURO‑CORDEX (WGS84)
+temp_euro <- temp_euro_raw |>
+  project(CRS_PROJ) |>
+  crop_mask(country)
 
-# DWD (wrong CRS → fix, crop, reproject)
+# DWD GK3 -> LAEA (wrong CRS → fix, crop, reproject)
 temp_dwd <- fix_and_project_raster(
   r = temp_dwd_raw,
+  country_sf = country,
+  src_crs = CRS_GK3
+)
+
+temp_10k <- fix_and_project_raster(
+  temp_10k,
   country_sf = country,
   src_crs = CRS_GK3
 )
@@ -175,14 +181,22 @@ temp_df_euro <- raster_to_df(
   transform = \(x) x - 273.15
 )
 
+temp_df_10k <- raster_to_df(
+  temp_10k,
+  value_name = "max_tmp"
+)
+
 #------------------------------------------------
 # Hillshade
 #------------------------------------------------
 dem <- get_elev_raster(
-  locations = country,
+  # locations = country,
+  locations = st_transform(country, CRS_WGS84),
   z = 6,
   clip = "locations"
-) |> rast()
+) |>
+  rast() |>
+  project(CRS_PROJ)
 
 hill <- compute_hillshade(dem)
 
@@ -195,41 +209,51 @@ hill_df <- raster_to_df(
 # OpenStreetMap basemap (FIXED)
 #------------------------------------------------
 osm_bg <- osm.raster(
-  x = country,
+  x = st_transform(country, CRS_WGS84),
   zoom = 6,
   type = "osm"
-)
+) |>
+  rast() |>
+  project(CRS_PROJ)
 
 
 ############################################
 # Maps
 ############################################
-
-map_dwd <- plot_temperature_map(
-  temp_df = temp_df_dwd,
-  hill_df = hill_df,
+map_dwd <- plot_temperature_map_spat(
+  temp_rast = temp_dwd,
+  hill_rast = hill,
   country_sf = country,
   osm_bg = osm_bg,
-  title = "Temperature: 1 km resolution"
+  title = "Temperature: DWD"
 )
 
-map_euro <- plot_temperature_map(
-  temp_df = temp_df_euro,
-  hill_df = hill_df,
+map_euro <- plot_temperature_map_spat(
+  temp_rast = temp_euro,
+  hill_rast = hill,
   country_sf = country,
   osm_bg = osm_bg,
-  title = "Temperature: 12 km resolution"
+  title = "Temperature: EURO CORDEX"
 )
+
+map_10k <- plot_temperature_map_spat(
+  temp_rast = temp_10k[["max_tmp_cent"]],
+  hill_rast = hill,
+  country_sf = country,
+  osm_bg = osm_bg,
+  title = "Temperature: 10k cluster"
+)
+
 
 ############################################
 # Combine maps
 ############################################
-map_dwd + map_euro + plot_annotation(tag_levels = "A")
+map_dwd + map_10k + map_euro + plot_annotation(tag_levels = "A")
 
-# add save
+map_10k + map_euro + plot_annotation(tag_levels = "A")
 ggsave(
-  filename = "output/ger_1v12km.tif",
-  scale = 4,
+  filename = "output/ger_10keur.tif",
+  scale = 3,
   width = 90,
   height = 45,
   units = "mm",

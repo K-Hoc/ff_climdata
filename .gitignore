@@ -8,7 +8,7 @@ test_images
 map_creation_with_functions.R
 (old)*.R
 (old)04_coord_ref.R
-
+.*
 
 # Ignore some directorys (chace, tmps, big output directory)
 output/

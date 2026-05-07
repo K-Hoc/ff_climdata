@@ -4,13 +4,10 @@ Clustering was done via a python script, so the clusters for 5-10k are loaded fr
 ```{r}
 if (.Platform$OS.type == "windows") {
   cPath <- "F:/data/climatedata/germany_1km_res/2_work"
-  # cRawPath <- "F:/data/climatedata/germany_1km_res/1_dataRaw"
 } else {
   cPath <- "/data/public/data/climatedata/germany_1km_res/2_work"
-  # cRawPath <- "/data/public/data/climatedata/germany_1km_res/1_dataRaw"
 }
 cPath <- normalizePath(cPath, winslash = "/")
-# cRawPath <- normalizePath(cRawPath, winslash = "/")
 
 gauss_kruger_crs <- "EPSG:31467"
 ```
@@ -48,7 +45,7 @@ f_calcAnom <- function(dfclim) {
         .names = "mean_{.col}"
       )
     )
-  
+
   # Join the means back to the original data
   climate_anomalies <- dfclim %>%
     left_join(cluster_means, by = "cluster") %>%
@@ -175,9 +172,9 @@ ggplot() +
   ) +
   #xlim(-2.5,2.5) +
   scale_color_manual(
-    name="Cluster sizes",
-    breaks=c("5k", "6k", "7k", "8k", "9k", "10k", "15k"),
-    values=c("5k" = "#bfa19a", "6k" = "#62a2b3",
+    name = "Cluster sizes",
+    breaks = c("5k", "6k", "7k", "8k", "9k", "10k", "15k"),
+    values = c("5k" = "#bfa19a", "6k" = "#62a2b3",
              "7k" = "#7a5048", "8k" = "#452e2a",
              "9k" = "#cd6548", "10k" = "#2d9eb6",
              "15k" = "#0f0a0a")
@@ -223,9 +220,9 @@ ggplot() +
   ) +
   #xlim(-2.5,2.5) +
   scale_color_manual(
-    name="Cluster sizes",
-    breaks=c("5k", "6k", "7k", "8k", "9k", "10k", "15k"),
-    values=c("5k" = "blue", "6k" = "yellow3",
+    name = "Cluster sizes",
+    breaks = c("5k", "6k", "7k", "8k", "9k", "10k", "15k"),
+    values = c("5k" = "blue", "6k" = "yellow3",
              "7k" = "orange", "8k" = "grey",
              "9k" = "red2", "10k" = "black", "15k" = "green")
   )
@@ -271,9 +268,9 @@ ggplot() +
   ) +
   #xlim(-100,100) +
   scale_color_manual(
-    name="Cluster sizes",
-    breaks=c("5k", "6k", "7k", "8k", "9k", "10k", "15k"),
-    values=c("5k" = "blue", "6k" = "yellow3",
+    name = "Cluster sizes",
+    breaks = c("5k", "6k", "7k", "8k", "9k", "10k", "15k"),
+    values = c("5k" = "blue", "6k" = "yellow3",
              "7k" = "orange", "8k" = "grey",
              "9k" = "red2", "10k" = "black",
              "15k" = "green")
@@ -320,9 +317,9 @@ ggplot() +
   ) +
   #xlim(-1.5,1.5) +
   scale_color_manual(
-    name="Cluster sizes",
-    breaks=c("5k", "6k", "7k", "8k", "9k", "10k", "15k"),
-    values=c("5k" = "blue", "6k" = "yellow3",
+    name = "Cluster sizes",
+    breaks = c("5k", "6k", "7k", "8k", "9k", "10k", "15k"),
+    values = c("5k" = "blue", "6k" = "yellow3",
              "7k" = "orange", "8k" = "grey",
              "9k" = "red2", "10k" = "black",
              "15k" = "green")
@@ -370,9 +367,9 @@ ggplot() +
   ) +
   #xlim(-0.02,0.02) +
   scale_color_manual(
-    name="Cluster sizes",
-    breaks=c("5k", "6k", "7k", "8k", "9k", "10k", "15k"),
-    values=c("5k" = "blue", "6k" = "yellow3",
+    name = "Cluster sizes",
+    breaks = c("5k", "6k", "7k", "8k", "9k", "10k", "15k"),
+    values = c("5k" = "blue", "6k" = "yellow3",
              "7k" = "orange", "8k" = "grey",
              "9k" = "red2", "10k" = "black",
              "15k" = "green")
@@ -382,20 +379,6 @@ ggplot() +
 Calculate area mean and sd
 ```{r}
 f_process_area <- function(df, crs_refsystem) {
-  # df %>%
-  #   f_create_grid(refsystem = crs_refsystem) %>%
-  #   group_by(cluster) %>%
-  #   summarise(
-  #     uni = st_union(geometry),
-  #     area_km2 = round(as.numeric(st_area(uni)) / 1e6, 3),
-  #     .groups = "drop"
-  #   ) %>%
-  #   mutate(
-  #     area_km2_mean = mean(area_km2),
-  #     area_km2_sd   = sd(area_km2)
-  #   )
-  
-  
   cluster_areas <- df %>%
     f_create_grid(refsystem = crs_refsystem) %>%
     select(cluster, geometry) %>% 
@@ -410,11 +393,25 @@ f_process_area <- function(df, crs_refsystem) {
       area_km2_sd   = sd(area_km2)
     )
   return(cluster_areas)
-
 }
-# df_area <- df_list %>%
-#   map(f_process_area, crs_refsystem = crs_refsystem) %>%
-#   list_rbind(names_to = "source_id")
+
+crs_refsystem <- 31467
+```
+
+Calculate climatic means and sd
+```{r}
+# ---- STEP 1: Put dataframes into a list ----
+df_list <- list(
+  cluster5k = df_5k,
+  cluster6k = df_6k,
+  cluster7k = df_7k,
+  cluster8k = df_8k,
+  cluster9k = df_9k,
+  cluster10k = df_10k,
+  cluster15k = df_15k
+)
+
+
 
 library(furrr)
 
@@ -431,23 +428,14 @@ df_area <- df_area %>% mutate(
     -c(source_id, geom)
   )
 
-```
-
-Calculate climatic means and sd
-```{r}
-# ---- STEP 1: Put dataframes into a list ----
-df_list <- list(
-  cluster5k = df_5k,
-  cluster6k = df_6k,
-  cluster7k = df_7k,
-  cluster8k = df_8k,
-  cluster9k = df_9k,
-  cluster10k = df_10k,
-  cluster15k = df_15k
-)
-
 # ---- STEP 2: Specify parameter columns ----
-parameter_cols <- c("max_temp_anomaly", "min_temp_anomaly", "prec_anomaly", "rad_anomaly", "vpd_anomaly")
+parameter_cols <- c(
+  "max_temp_anomaly",
+  "min_temp_anomaly",
+  "prec_anomaly",
+  "rad_anomaly",
+  "vpd_anomaly"
+)
 
 # ---- STEP 3: Function to compute mean ± sd for one dataframe ----
 f_summarize_mean_sd <- function(df, cols) {
@@ -503,8 +491,6 @@ flextable::save_as_docx(ft, path = file.path("output", "table2.docx"))
 
 ## Plot Map
 ```{r}
-crs_refsystem <- 31467
-
 df5k_sf <- f_create_grid(
   df = df_5k,
   refsystem = crs_refsystem
@@ -605,7 +591,6 @@ For getting climate data on the 1km² scale, the 10k clusters will be used.
 Creating a raster that contains the coordinates and the associate cluster of every km² in Germany.
 ```{r}
 df10k_clust <- read_csv(file = "clustered/k10000_clim_dat.csv")
-#ref_rast <- f_create_grid(df = df10k_clust, refsystem = crs_refsystem)
 
 ref_rast <- terra::rast(
   df10k_clust,
@@ -691,8 +676,7 @@ p_dens <- ggplot(data = ldf_clScen) +
     legend.margin     = margin(0, 0, 0, 0)
   ) +
   scale_colour_viridis_d(
-    option = "plasma", # "turbo",
-    # direction = 1,
+    option = "plasma",
     name = "Number of Clusters"
   )
 p_dens
@@ -740,14 +724,6 @@ df5k_sf$nr_clst <- "5k"
 df10k_sf$nr_clst <- "10k"
 df15k_sf$nr_clst <- "15k"
 
-# df5_15k <- bind_rows(
-#   df5k_sf,
-#   df10k_sf,
-#   df15k_sf
-# ) %>% 
-#   mutate(
-#     nr_clst = factor(.$nr_clst, levels = c("5k", "10k", "15k"))
-#   )
 
 # Choose how many colour groups you can actually see
 n_groups <- 12
@@ -790,21 +766,7 @@ p_dens <- p_dens + common_theme
 
 p_fin <- (p_left | p_dens) +
   plot_annotation(tag_levels = "A") +
-  plot_layout(widths = c(1,2)) #& #, guides = "collect") &
-  # theme(
-  #   legend.position = "bottom",
-  #   legend.spacing = unit(1, "pt"),
-  #   plot.margin = margin(2,10,2,2)
-  # )
-
-# ggsave(
-#   filename = file.path(getwd(), "output/tmp_fig2.png"),
-#   plot = p_fin,
-#   width = 100,
-#   height = 200,
-#   units = "mm",
-#   dpi = 100
-# )
+  plot_layout(widths = c(1, 2))
 
 p_fin
 ```
@@ -826,8 +788,6 @@ library(dplyr)
 library(ggplot2)
 library(MetBrewer)
 library(paletteer)
-# library(viridisLite)  # just for palette length if you want
-# library(viridis)    # if you want scale_* functions
 
 # Choose how many colour groups you can actually see
 n_groups <- 12
@@ -846,13 +806,7 @@ df5_15k <- bind_rows(
     cluster_mod = factor(cluster_mod)  # discrete mapping
   )
 
-# # A discrete Viridis scale; use _d for discrete, not _c
-# color_scale_discrete <- scale_color_viridis_d(
-#   option = "plasma",
-#   direction = 1,
-#   name = paste0("Cluster (mod ", n_groups, ")")
-# )
-
+# A discrete Viridis scale; use _d for discrete, not _c
 p_left <- ggplot(df5_15k) +
   facet_wrap(~nr_clst, nrow = 3, ncol = 1) +
   geom_sf(aes(color = cluster_mod), size = 0.2) +
@@ -965,7 +919,6 @@ Compactness - Isoperimetric Quotient (4piA/P²)
 area_stats <- df10k_sf %>% 
   group_by(cluster) %>% 
   summarise(
-    # hull = st_convex_hull(st_union(geometry)),
     uni = st_union(geometry),
     area_km2 = round(as.numeric(st_area(uni)) /1e6, 3),
     perimeter_km = st_perimeter(uni) / 1000, # Umfang in [km]
@@ -1045,10 +998,6 @@ Creating the figures and saving them to file.
 ph_area <- ggplot(data = area_stats, aes(x = area_km2)) +
   ggpubr::theme_pubr() + #theme_minimal() +
   geom_freqpoly(binwidth = 1) +
-  # geom_vline(
-  #   xintercept = area_stats_summary$area_med,
-  #   linetype = "solid", linewidth = 0.7
-  # ) +
   labs(x = "area [km²]", title = "Cluster area", y = "count") +
   geom_label(
     data = data.frame(
@@ -1080,10 +1029,6 @@ ph_comp <- ggplot(data = area_stats) +
     aes(x = compactness),
     binwidth = 0.01,
   ) +
-  # geom_vline(
-  #   xintercept = area_stats_summary$comp_med,
-  #   linetype = "solid", linewidth = 0.7
-  # ) +
   labs(title = "Cluster compactness", y = "count") +
   geom_label(
     data = data.frame(
@@ -1115,10 +1060,6 @@ ph_per <- ggplot(data = area_stats) +
     aes(x = as.numeric(perimeter_km)),
     binwidth = 10,
   ) +
-  # geom_vline(
-  #   xintercept = area_stats_summary$per_med,
-  #   linetype = "solid", linewidth = 0.7
-  # ) +
   labs(x = "perimeter [km]", title = "Cluster perimeter", y = "count") +
   geom_label(
     data = data.frame(
@@ -1144,13 +1085,7 @@ ph_per <- ggplot(data = area_stats) +
   )
 
 ph_area + ph_comp + ph_per + plot_annotation(tag_levels = "A")
-# ggsave(
-#   filename = file.path(getwd(), "output/fig3_areahisto.png"),
-#   scale = 4,
-#   width = 50,
-#   height = 25,
-#   units = "mm"
-# )
+
 ggsave(
   filename = file.path(getwd(), "output/Figure3.tiff"),
   scale = 3,
@@ -1258,27 +1193,20 @@ save_as_docx(ft_a, path = file.path(getwd(), "output/area_mtr_tbl.docx"))
 
 
 ```{r}
-area_stats %>% filter(area_km2 >= 20000) %>% dplyr::select(one_of("cluster")) %>% st_drop_geometry()
+# area_stats %>% filter(area_km2 >= 100) %>% dplyr::select(one_of("cluster")) %>% st_drop_geometry()
 
 
 ggplot(
   data = df10k_sf %>%
     filter(
-      cluster %in% (area_stats %>% filter(area_km2 >= 10000) %>% dplyr::select(one_of("cluster")) %>% st_drop_geometry() %>% dplyr::pull(cluster))
+      cluster %in% (area_stats %>% filter(area_km2 >= 100) %>% dplyr::select(one_of("cluster")) %>% st_drop_geometry() %>% dplyr::pull(cluster))
     ) 
 ) +
   geom_sf(aes(color = cluster), size = 1) +
   color_scale +
   coord_common
-  # labs(title = "10k Clusters", x = NULL, y = "Latitude") +
-  # common_theme +
-  # theme(
-  #   axis.text.y  = element_blank(),
-  #   axis.title.y = element_blank(),
-  #   axis.ticks.y = element_blank()
-  # )
 
-ggplot(data = area_stats) +
-  geom_sf(aes(fill = cluster))
+# ggplot(data = area_stats) +
+#   geom_sf(aes(fill = cluster))
 ```
 

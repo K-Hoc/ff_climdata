@@ -1,50 +1,63 @@
-# Germany 1 km climate clusters — repository overview
+# Germany 1 km climate clusters — directory overview
 
-This repository contains scripts, data snapshots and helpers used to create and process 1 km climate clusters for Germany and to gather cluster-specific climate time series from model output.
+This folder contains the scripts, data snapshots, and helpers used to create and process 1 km climate clusters for Germany.
 
-Key points
-- Purpose: cluster Germany into ~10k climate-representative units (1981–2010 baseline), compute bias/corrections and extract daily climate time series per cluster from model data (historical + RCP scenarios).
-- Inputs: DWD-derived observational variables (temperature, radiation, vapor pressure deficit, precipitation) and climate model outputs accessed via a Spark/SQL backend.
+## Current status (2026-05-07)
 
-Repository structure (top-level)
-- `01_clim_scr.Rmd` — exploratory/preprocessing RMarkdown for climate scrubbing and preparation.
-- `02_cluster5-10k.py` — Python clustering script (produces clusters at various k values).
-- `03_post_clustering.Rmd` / `04_Centoid_LatLon.Rmd` — post-clustering analysis: select representative points and compute centroid/lat-lon summaries.
-- `05_tiff_creation.Rmd` — create spatial TIFFs from cluster results.
-- `06_bias_handling.Rmd` — compute bias/correction factors between model and reference climatologies.
-- `07_getClimData.R` — long-running data extraction from the Spark DB; applies bias corrections when writing cluster time series.
-- `08_Evaluate_clim_dat.R` — light evaluation/QA of the extracted climate datasets.
-- `clim_dat.csv`, `cluster_coords.csv` — summary CSVs used in analysis and mapping.
+- Primary workflow: RMarkdown + R + Python scripts for preprocessing, clustering, bias correction and data extraction.
+- Main outputs and snapshots are kept under `clustered/`, `tif/` and `output/`.
 
-Folders (will be created during processing)
-- `bias_tbl/` — bias tables and aggregated summaries per model (CSV files).
-- `clim_dbs/` — helper scripts for creating/organising SQLite databases; contains `sort.py` and `sort_sqlite.sh`.
-- `clustered/` — cluster outputs and per-cluster climate CSVs. Contains `k5000_...` to `k15000_...` variants and a `multi_year_mean_climate1981_2010.csv` baseline. Also contains dated snapshots (e.g. `20250513/`).
-- `output/` — miscellaneous outputs and interim files.
-- `tif/` — generated GeoTIFFs for spatial visualization.
+## Active (current) files
 
-## Notes on data and processing
-- Clustering: uses DWD-derived climate variables to create spatial clusters; representative points and centroid metadata are produced for each cluster.
-- Bias handling: mean climate differences (30-year baseline) are used to compute correction factors applied during extraction (temperatures typically adjusted additively; precipitation, vpd, radiation multiplicatively).
-- Extraction: `07_getClimData.R` queries the Spark/SQL backend to build per-cluster time series (1981–2100). The extraction can be long-running and may require restarts; outputs are large (multiple GB per DB file).
+- `01_clim_scr.Rmd` — input preparation and climate scrubbing (preprocessing).
+- `02_cluster5-10k.py` — clustering script (produces clusterings for multiple `k` values).
+- `03_post_clustering.Rmd` — post-clustering analyses and checks.
+- `04_Centoid_LatLon.Rmd` — compute centroids and representative lat/lon for clusters.
+- `05_tiff_creation.Rmd` — produce GeoTIFFs for visualization.
+- `06_bias_handling.Rmd` — compute bias/correction tables between models and reference climatology.
+- `07_getClimData.R` — extract per-cluster time series from the Spark/SQL backend (long-running).
+- `08_Evaluate_clim_dat.R` — QA and light evaluation of extracted datasets.
+- `2_work.Rproj` — RStudio project file.
+- `map_fig_creation.R` — helper for map/figure creation.
 
-Quick pointers
-- If you want to re-run clustering: inspect and run `02_cluster5-10k.py` and then the post-clustering notebooks for centroid selection.
-- For bias calculation and correction: see `06_bias_handling.Rmd` and files in `bias_tbl/`.
-- To (re)run extraction: `07_getClimData.R` — verify DB access, available disk space, and consider splitting work into manageable chunks.
 
-### Contact / authorship
+## Folders
 
-**Authors**: Kilian Hochholzer, Christina Dollinger, Marc Grünig, Rupert Seidl, Werner Rammer
+- `bias_tbl/` — bias tables and aggregated summaries per model.
+- `clim_dbs/` — helper scripts for database handling and sorting (contains `sort.py`, `sort_sqlite.sh`).
+- `clustered/` — cluster outputs and per-cluster climate CSVs (multiple `k` values and snapshots such as `20250513/`).
+- `gis/` — spatial resources and the QGIS project (`germany_1km.qgz`).
+- `output/` — miscellaneous outputs and intermediate files.
+- `tif/` — generated GeoTIFFs for mapping and visualization.
 
-- Maintainer: repository owner (check git history) — open an issue or contact the project owner for access details to the Spark DB and runtimes.
+## Quick workflow (recommended order)
 
-### Citation
+1. Prepare and scrub inputs: `01_clim_scr.Rmd`.
+2. Run clustering: `02_cluster5-10k.py`.
+3. Post-process results and select centroids: `03_post_clustering.Rmd`, `04_Centoid_LatLon.Rmd`.
+4. Create spatial products: `05_tiff_creation.Rmd`.
+5. Compute bias corrections: `06_bias_handling.Rmd`.
+6. Extract per-cluster time series: `07_getClimData.R` (requires Spark/SQL access and substantial disk space).
+7. Evaluate extracted datasets: `08_Evaluate_clim_dat.R`.
+
+## Notes
+
+- `07_getClimData.R` is long-running and produces large outputs; test with small subsets before full runs.
+- Use `clim_dbs/sort.py` and `clim_dbs/sort_sqlite.sh` to organize DB exports when needed.
+- `clustered/` contains multiple k-level results (e.g. `k5000_*`, `k10000_*`) and the baseline `multi_year_mean_climate1981_2010.csv`.
+
+## Contact / maintainers
+
+Check git history for authorship and the repository owner for database access or runtime credentials.
+
+## Citation
+
+Please update this placeholder citation entry when a DOI or formal citation becomes available.
 
 @article{hochholzer2026climatecluster,
-  title = {},
-  author = {},
-  journal = {Journal / Archive},
+  title = {TBD},
+  author = {TBD},
+  journal = {TBD},
   year = {2026},
   doi = {INSERT_DOI_HERE},
   url = {https://github.com/your-repo}

@@ -15,12 +15,6 @@ library(RSQLite)
 library(sparklyr)
 library(collapse)
 library(progress)
-# library(future)
-# library(future.apply)
-# library(progressr)
-# 
-# progressr::handlers(global = TRUE)
-# progressr::handlers("txtprogressbar") # or "cli" or "progress"
 
 # Paths
 if (.Platform$OS.type == "windows") {
@@ -63,29 +57,18 @@ f_getPointID <- function(x, ref_rast) {
   for (i in seq_len(n)) {
     lat <- as.numeric(coords[i, "lat"])
     lon <- as.numeric(coords[i, "lon"])
-    #cat("Coord: ", coord)
-    # coord <- coords[1,]
     # 1 Transformation
     coord <- st_sfc(st_point(c(lon, lat)), crs = g_gaus_krueger)
     coord <- st_transform(coord, g_wgs84)
     coord <- st_coordinates(coord)
-    # coord <- vect(matrix(c(lon, lat), ncol = 2), crs = g_gaus_krueger)
-    # coord <- project(coord, g_wgs84)
-    # coord <- crds(coord)
-    
-    # # Transform to raster CRS
-    # coord <- vect(matrix(coord, ncol = 2), crs = g_wgs84) %>% 
-    #   project(., crs(ref_rast))
-    
+   
     # 2 Find closest raster cell
     cell_id <- cellFromXY(ref_rast, coord)
     cell_cnt <- xyFromCell(ref_rast, cell_id)
     ref_id <- terra::extract(ref_rast, cell_cnt)
-    
+
     # 3 if na search nearby
     if (is.na(ref_id[[1]])) {
-      #cat("Closest cell is NA, searching nearby...\n"); flush.console()
-      
       # Create a buffer around point
       p <- vect(coord, type = "points", crs = g_wgs84)
       p_buff <- buffer(p, width = 28000) # 14 km buffer
@@ -114,13 +97,6 @@ f_getPointID <- function(x, ref_rast) {
     
     # Compute distance (Eucl in meter)
     ddist <- sqrt(sum((coord - cell_cnt)^2))
-    
-    # cat("Closest raster cell id: ", cell_id)
-    # cat(" with ref_id: ", ref_id[[1]], "\n")
-    # cat("Raster center coord: ", cell_cnt, "; Point coord: ", coord, "\n")
-    # cat("Distance to center: ", ddist, "m\n")
-    # flush.console()
-    
     ref_pnt_vec[i] <- ref_id
     pb$tick()
   }
@@ -134,40 +110,15 @@ f_getPointID <- function(x, ref_rast) {
 x_rast <- rast(file.path(path, "clim_data", "reference_grid.tif"))
 crs(x_rast) <- "+proj=longlat +datum=WGS84 +no_defs"
 x_rast <- project(x_rast, g_wgs84)
-
-# # Project the raster back to Gaus-Krueger
-# nx_rast <- terra::project(x_rast, "EPSG:31467")
-# 
-# ref_tab <- read.csv(file.path(path, "clim_data", "reference_grid_tab.csv"))
-# # Transform ref_tab also to Gaus-Krueger
-# ref_sf <- st_as_sf(ref_tab, coords = c("wgs_x", "wgs_y"), crs = 4326)
-# ref_gk <- st_transform(ref_sf, crs = 31467)
-# transformed <- st_coordinates(ref_gk)
-# ref_tab$gk_x <- transformed[,1]
-# ref_tab$gk_y <- transformed[,2]
-# head(ref_tab)
-# 
-# rm(x_rast, ref_sf, ref_gk, transformed)
 ```
 ### Link DWD data to reference raster
 Using the function to link the DWD centoids to the next available reference grid.
 ```{r}
-# dfDWD$ref_point <- as.integer(f_getPointID(
-#   x = dfDWD,
-#   rast = nx_rast,
-#   ref_tab = ref_tab
-# ))
-# head(dfDWD)
-
 dfDWD$ref_point <- as.integer(f_getPointID(
   x = dfDWD,
   ref_rast = x_rast
 ))
 summary(dfDWD)
-# dfDWD$ref_point <- f_getPointID_parallel(
-#   x = dfDWD,
-#   ref_rast = x_rast
-# )
 ```
 ## Climate model data
 Gathering 30 years of data (1981-2010) from Spark.
@@ -350,23 +301,7 @@ for (scn in scenarios_hist) {
       vpd = mean(vpd),
       rad = mean(rad)
     )
-  # agg_fut <- agg_clim %>% filter(year > 2005) %>% 
-  #   mutate(
-  #     precip = precip/3,
-  #     rad = rad/3
-  #   )
-  # agg_clim <- bind_rows(
-  #   agg_clim %>% filter(year <= 2005),
-  #   agg_fut
-  # ) %>%
-  #   group_by(point_id) %>% 
-  #   summarize(
-  #     min_temp = mean(min_temp),
-  #     max_temp = mean(max_temp),
-  #     precip = mean(precip),
-  #     vpd = mean(vpd),
-  #     rad = mean(rad)
-  #   ) %>% ungroup()
+
   # Write aggregated data
   write_csv(
     x = agg_clim,

@@ -39,8 +39,6 @@ library(factoextra)
 library(cluster)
 library(ggpubr)
 library(sf)
-#library(compiler)
-#library(fastkmedoids)
 ```
 ## Gather climate data
 Load raster data.
@@ -72,7 +70,7 @@ df_clim <- inner_join(
   x = df_max_tmp,
   y = df_min_tmp,
   by = join_by(lat, lon)
-) %>% 
+) %>%
   inner_join(
     x = .,
     y = df_prec,
@@ -86,28 +84,24 @@ Some of the DWD files contain a custom header. The terra package cannot handle t
 ```{r}
 get_raster <- function(strFilePath) {
   # Read the full file as text
-  # lines <- readLines(strFilePath, encoding = "UTF-8")
   lines <- readLines(strFilePath, encoding = "latin1")
-  
-  # Find the line where raster data begins 
+
+  # Find the line where raster data begins
   # (the "[ASCII-Raster-Format]" block starts here)
   start_idx <- grep("^NCOLS", lines)  # or grep("^[A-Z]+", lines) to find NCOLS
-  
+
   # Keep only the raster part
   ascii_raster_lines <- lines[start_idx:length(lines)]
 
   # Write it to a unique temporary file
-  # writeLines(ascii_raster_lines, file.path(cPath,"raster_cleared.asc"))
   tmp_file <- tempfile(fileext = ".asc")
   writeLines(ascii_raster_lines, tmp_file)
-  
-  # # Now load it with terra
-  # r <- terra::rast(file.path(cPath,"raster_cleared.asc"))
+
+  # Now load it with terra
   r <- terra::rast(tmp_file)
-  
+
   # Try without deleting manually
-  # # Delete temporary file
-  # unlink(tmp_file)
+  # Delete temporary file
   cat("Raster: ", summary(r, size = Inf), "\n"); flush.console()
 
   return(r)
@@ -118,7 +112,7 @@ Extract radiation data from raster.
 # Create raster from multi monthly radiation global for all 12 months
 rad_months <- list.files(
   file.path(cRawPath, "raster", "20250714"),
-  full.names = T,
+  full.names = TRUE,
   pattern = "monthly_rad"
 )
 rad_months_rast <- rast(lapply(X = rad_months, FUN = get_raster))

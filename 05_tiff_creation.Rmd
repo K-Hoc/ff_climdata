@@ -30,11 +30,6 @@ df_ger <- read_csv(
 df_gerClust <- read_csv(
   file = file.path(cPath, "clustered", "k10000_clim_dat.csv")
 )
-# df_data <- inner_join(
-#   x = df_clim,
-#   y = df_coords,
-#   by = join_by(cluster_id == cluster)
-# ) %>% dplyr::select(-rep_index)
 
 df_data <- left_join(
   x = df_gerClust,

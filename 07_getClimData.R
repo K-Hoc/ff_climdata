@@ -23,144 +23,25 @@ smpl_pnts <- read.csv(
   file = file.path(path, "coords_rep_cl_ger.csv")
 )
 
-# f_getPointID <- function(x, rast, ref_tab){
-#   # extract the grid ID
-#   lon <- x$lon
-#   lat <- x$lat
-# 
-#   coords <- as.data.frame(cbind(lon, lat))
-# 
-#   point_extr <- terra::extract(rast, coords)[,2]
-# 
-#   na_indices <- which(is.na(point_extr))
-#   if(length(na_indices) > 0) {
-#     for (i in na_indices) {
-#       lon_i <- lon[i]
-#       lat_i <- lat[i]
-#       closest_grid <- ref_tab[which.min(abs(lon_i - ref_tab$gk_x) + abs(lat_i - ref_tab$gk_y)),]
-#       point_extr[i] <- as.numeric(closest_grid[1])
-#     }
-#   }
-# 
-#   return(point_extr)
-# }
-# f_getPointID <- function(x, ref_rast) {
-#   g_gaus_krueger <- "EPSG:31467"
-#   g_wgs84 <- "EPSG:4326"
-#   
-#   coords <- x %>% dplyr::select(lat, lon)
-#   n <- nrow(coords)
-#   
-#   # Preallocate result vector
-#   ref_pnt_vec <- rep(NA, n)
-#   
-#   pb <- progress::progress_bar$new(
-#     format = " Processing [:bar] :percent ETA :eta",
-#     total = n, clear = FALSE, width = 60
-#   )
-#   #cat("Start loop.. \n")
-#   for (i in seq_len(n)) {
-#     lat <- as.numeric(coords[i, "lat"])
-#     lon <- as.numeric(coords[i, "lon"])
-#     #cat("Coord: ", coord)
-#     # coord <- coords[1,]
-#     # 1 Transformation
-#     coord <- st_sfc(st_point(c(lon, lat)), crs = g_gaus_krueger)
-#     coord <- st_transform(coord, g_wgs84)
-#     coord <- st_coordinates(coord)
-#     # coord <- vect(matrix(c(lon, lat), ncol = 2), crs = g_gaus_krueger)
-#     # coord <- project(coord, g_wgs84)
-#     # coord <- crds(coord)
-#     
-#     # # Transform to raster CRS
-#     # coord <- vect(matrix(coord, ncol = 2), crs = g_wgs84) %>% 
-#     #   project(., crs(ref_rast))
-#     
-#     # 2 Find closest raster cell
-#     cell_id <- cellFromXY(ref_rast, coord)
-#     cell_cnt <- xyFromCell(ref_rast, cell_id)
-#     ref_id <- terra::extract(ref_rast, cell_cnt)
-#     
-#     # 3 if na search nearby
-#     if (is.na(ref_id[[1]])) {
-#       #cat("Closest cell is NA, searching nearby...\n"); flush.console()
-#       
-#       # Create a buffer around point
-#       p <- vect(coord, type = "points", crs = g_wgs84)
-#       p_buff <- buffer(p, width = 28000) # 14 km buffer
-#       
-#       # Crop raster to buffer
-#       cropped_r <- crop(ref_rast, p_buff)
-#       
-#       # Get cell IDs, coords, and values
-#       cell_ids <- which(!is.na(values(cropped_r)))
-#       if (length(cell_ids) == 0) {
-#         warning("No valid cells found nearby.")
-#         ref_id <- NA
-#       } else {
-#         ref_coord <- xyFromCell(cropped_r, cell_ids)
-#         ref_val <- values(cropped_r)[cell_ids]
-#         
-#         # Compute distance from point to each valid cell
-#         ddist <- sqrt((ref_coord[,1] - coord[1,1])^2 + (ref_coord[,2] - coord[1,2])^2)
-#         closest_idx <- which.min(ddist)
-#         
-#         # Update ref_id and center coord
-#         ref_id <- ref_val[closest_idx]
-#         cell_cnt <- ref_coord[closest_idx,]
-#       }
-#     }
-#     
-#     # Compute distance (Eucl in meter)
-#     ddist <- sqrt(sum((coord - cell_cnt)^2))
-#     
-#     # cat("Closest raster cell id: ", cell_id)
-#     # cat(" with ref_id: ", ref_id[[1]], "\n")
-#     # cat("Raster center coord: ", cell_cnt, "; Point coord: ", coord, "\n")
-#     # cat("Distance to center: ", ddist, "m\n")
-#     # flush.console()
-#     
-#     ref_pnt_vec[i] <- ref_id
-#     pb$tick()
-#   }
-#   return(ref_pnt_vec)
-# }
-
-# x_rast <- rast(file.path(path, "clim_data", "reference_grid.tif"))
-# crs(x_rast) <- "+proj=longlat +datum=WGS84 +no_defs"
-# 
-# # Project the raster back to Gaus-Krueger
-# nx_rast <- terra::project(x_rast, "EPSG:31467")
-# 
-# ref_tab <- read.csv(file.path(path, "clim_data", "reference_grid_tab.csv"))
-# # Transform ref_tab also to Gaus-Krueger
-# ref_sf <- st_as_sf(ref_tab, coords = c("wgs_x", "wgs_y"), crs = 4326)
-# ref_gk <- st_transform(ref_sf, crs = 31467)
-# transformed <- st_coordinates(ref_gk)
-# ref_tab$gk_x <- transformed[,1]
-# ref_tab$gk_y <- transformed[,2]
-# head(ref_tab)
-# rm(x_rast, ref_sf, ref_gk, transformed)
-
 # Scenarios
-# future_scn <- c(
-#   "ICHEC-EC-EARTH_rcp_8_5",
-#   "ICHEC-EC-EARTH_rcp_4_5",
-#   "ICHEC-EC-EARTH_rcp_2_6",
-#   "NCC-NorESM1-M_rcp_8_5",
-#   "NCC-NorESM1-M_rcp_4_5",
-#   "NCC-NorESM1-M_rcp_2_6",
-#   "MPI-M-MPI-ESM-LR_rcp_8_5",
-#   "MPI-M-MPI-ESM-LR_rcp_4_5",
-#   "MPI-M-MPI-ESM-LR_rcp_2_6"
-# )
+future_scn <- c(
+  "ICHEC-EC-EARTH_rcp_8_5",
+  "ICHEC-EC-EARTH_rcp_4_5",
+  "ICHEC-EC-EARTH_rcp_2_6",
+  "NCC-NorESM1-M_rcp_8_5",
+  "NCC-NorESM1-M_rcp_4_5",
+  "NCC-NorESM1-M_rcp_2_6",
+  "MPI-M-MPI-ESM-LR_rcp_8_5",
+  "MPI-M-MPI-ESM-LR_rcp_4_5",
+  "MPI-M-MPI-ESM-LR_rcp_2_6"
+)
 hist_scn <- c(
   "ICHEC-EC-EARTH_historical",
   "NCC-NorESM1-M_historical",
   "MPI-M-MPI-ESM-LR_historical"
 )
-# scenarios <- c(future_scn, hist_scn)
-scenarios <- c(hist_scn)
+scenarios <- c(future_scn, hist_scn)
+# scenarios <- c(hist_scn)
 
 Sys.setenv("SPARK_HOME" = "/opt/spark")
 # Set memory allocation for whole local spark instance
@@ -251,12 +132,6 @@ for (scn in scenarios) {
     silent = TRUE
   )
  
-  # spark_tbl_handler <- spark_read_parquet(
-  #   sc,
-  #   name = NULL,
-  #   path = file.path(path_dss, paste0(scn, "/")),
-  #   memory = TRUE
-  # )
   spark_tbl_handler <- f_hive_free_read_paquete(
     sc = sc,
     path = file.path(path_dss, paste0(scn, "/")),
@@ -280,16 +155,12 @@ for (scn in scenarios) {
         timesteps[r] == "2071-2090" ~ list(2071:2090),
         timesteps[r] == "2091-2100" ~ list(2091:2100)
       ))
-      # Unlist to get the sequence of years
-      # years <- unlist(years)
-      #years <- c(2006:2100)
     }
     
     cat("Gathering for years: ", years, "\n")
     flush.console()
     
     clim_res <- tryCatch({
-      #spark_tbl_handler %>% 
       tbl(sc, "climate") %>% 
         sparklyr::filter(point_id %in% pnt_id) %>% 
         sparklyr::filter(year %in% years) %>% 
@@ -305,27 +176,18 @@ for (scn in scenarios) {
     if (is.null(clim_res)) {
       next
     }
-    # clim_res <- spark_tbl_handler %>% 
-    #   sparklyr::filter(point_id %in% pnt_id) %>% 
-    #   sparklyr::filter(year %in% years) %>% 
-    #   sparklyr::select(point_id, year, month, day, min_temp, max_temp, prec, rad, vpd) %>%
-    #   sparklyr::distinct() %>% 
-    #   sparklyr::collect()
+
     
     cat("Data gathered. Writing to .sqlite\n")
     flush.console()
     
     # Loop through all point ids
-    #for (i in 1:length(pnt_id)) {
     for (i in df_bias$cluster) {
       # i <- df_bias$cluster[1]
       # Point id of cluster
       #focal_pnt <- pnt_id[i]
       focal_pnt <- i
       cat("Cluster ", focal_pnt, "\n"); flush.console()
-      # cat("Point ", focal_pnt,"(",i," / ", length(pnt_id),")", "\n")
-      # flush.console()
-      # clim_tab_out_point <- clim_res %>% filter(point_id == focal_pnt)
       
       # Bias correction
       clim_tab_out_point <- inner_join(
@@ -342,13 +204,7 @@ for (scn in scenarios) {
         -ends_with("bias")
       )
       cat("bias corrected\n"); flush.console()
-      # Ping spark to keep connection
-      #try(sparklyr::sdf_nrow(spark_tbl_handler), silent = TRUE)
-      
-      #cat("writing point ", focal_pnt, " to .sqlite\n")
-      #flush.console()
-      
-      # tbl_name <- paste0(scn, "_point", focal_pnt)
+
       tbl_name <- paste0(scn, "_clst_", focal_pnt)
       # Check whether table exists
       if (!dbExistsTable(conn = clim_db, name = tbl_name)) {

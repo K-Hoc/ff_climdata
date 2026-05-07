@@ -110,7 +110,6 @@ ggplot(data = dfClDif %>% pivot_longer(
 ## 6.  Safe .csv file with centoid latitude and longitude
 ```{r}
 write_csv(
-  #dfCombi %>% select(lat, lon, cluster),
   dfClimCent %>% dplyr::select(lon, lat, cluster),
   file = "cluster_coords.csv"
 )

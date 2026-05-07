@@ -1,7 +1,4 @@
 # ---- Evaluate climate data ----
-# processed for Germany by Kilian
-#
-# script initially by Werner
 library(RSQLite)
 library(tidyverse)
 

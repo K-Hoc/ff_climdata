@@ -15,7 +15,6 @@ parser = argparse.ArgumentParser(description="Fing optimal number of clusters.")
 
 # Add arguments
 parser.add_argument("file", type=str, default="clim_dat.csv", help="Path to input .csv file")
-#parser.add_argument("-k", type=int, default=10, help="Number of clusters.")
 
 # Clustering function
 def k_cluster(data, cluster_n):

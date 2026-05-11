@@ -1,4 +1,4 @@
-# Germany 1 km climate clusters — directory overview
+# A high-resolution daily climate time series for Germany (1981-2100) — code directory overview
 
 This folder contains the scripts, data snapshots, and helpers used to create and process 1 km climate clusters for Germany.
 
@@ -19,7 +19,6 @@ This folder contains the scripts, data snapshots, and helpers used to create and
 - `08_Evaluate_clim_dat.R` — QA and light evaluation of extracted datasets.
 - `2_work.Rproj` — RStudio project file.
 - `map_fig_creation.R` — helper for map/figure creation.
-
 
 ## Folders
 
@@ -45,20 +44,3 @@ This folder contains the scripts, data snapshots, and helpers used to create and
 - `07_getClimData.R` is long-running and produces large outputs; test with small subsets before full runs.
 - Use `clim_dbs/sort.py` and `clim_dbs/sort_sqlite.sh` to organize DB exports when needed.
 - `clustered/` contains multiple k-level results (e.g. `k5000_*`, `k10000_*`) and the baseline `multi_year_mean_climate1981_2010.csv`.
-
-## Contact / maintainers
-
-Check git history for authorship and the repository owner for database access or runtime credentials.
-
-## Citation
-
-Please update this placeholder citation entry when a DOI or formal citation becomes available.
-
-@article{hochholzer2026climatecluster,
-  title = {TBD},
-  author = {TBD},
-  journal = {TBD},
-  year = {2026},
-  doi = {INSERT_DOI_HERE},
-  url = {https://github.com/your-repo}
-}

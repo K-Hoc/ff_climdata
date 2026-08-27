@@ -29,13 +29,13 @@ library(paletteer)
 Load clustered climate data from .csv files.
 ```{r}
 setwd(cPath)
-df_5k <- read.csv(file = file.path("clustered","k5000_clim_dat.csv"))
-df_6k <- read.csv(file = file.path("clustered","k6000_clim_dat.csv"))
-df_7k <- read.csv(file = file.path("clustered","k7000_clim_dat.csv"))
-df_8k <- read.csv(file = file.path("clustered","k8000_clim_dat.csv"))
-df_9k <- read.csv(file = file.path("clustered","k9000_clim_dat.csv"))
-df_10k <- read.csv(file = file.path("clustered","k10000_clim_dat.csv"))
-df_15k <- read.csv(file = file.path("clustered","k15000_clim_dat.csv"))
+df_5k <- read.csv(file = file.path("clustered", "k5000_clim_dat.csv"))
+df_6k <- read.csv(file = file.path("clustered", "k6000_clim_dat.csv"))
+df_7k <- read.csv(file = file.path("clustered", "k7000_clim_dat.csv"))
+df_8k <- read.csv(file = file.path("clustered", "k8000_clim_dat.csv"))
+df_9k <- read.csv(file = file.path("clustered", "k9000_clim_dat.csv"))
+df_10k <- read.csv(file = file.path("clustered", "k10000_clim_dat.csv"))
+df_15k <- read.csv(file = file.path("clustered", "k15000_clim_dat.csv"))
 ```
 #### Calculate Anomalies
 ##### Anomalies from cluster mean
@@ -174,13 +174,7 @@ df_list <- list(
   cluster15k = df_15k
 )
 
-
-
-# library(furrr)
-# plan(multicore)  # or multicore on Linux/macOS
-library(purrr)
 df_area <- df_list %>%
-  # future_map(f_process_area, crs_refsystem = crs_refsystem) %>%
   map(f_process_area, crs_refsystem = crs_refsystem) %>% 
   list_rbind(names_to = "source_id")
 
@@ -240,7 +234,6 @@ summary_table <- left_join(
 
 
 ft <- flextable(summary_table) %>%
-  #merge_v(j = "ecosystem") %>%
   theme_booktabs() %>%
   color(i = seq(2, nrow(summary_table), 2), color = "black", part = "body") %>%
   bg(i = seq(2, nrow(summary_table), 2), bg = "#F9F9F9", part = "body") %>%
@@ -307,7 +300,7 @@ ggplot(data = df10k_sf) +
 ```{r}
 # Create SpatRaster
 rast_15k <- terra::rast(
-  df_15k, # %>% select(lon, lat, cluster),
+  df_15k,
   type = "xyz",
   crs = gauss_kruger_crs
 )
@@ -331,21 +324,21 @@ plot(rast_10k[["cluster"]])
 
 ```{r}
 # write .tiff file
-# terra::writeRaster(
-#   x = rast_15k,
-#   filename = file.path("tif","15k_clim_cl.tif"),
-#   overwrite = TRUE
-# )
-# terra::writeRaster(
-#   x = rast_5k,
-#   filename = file.path("tif","5k_clim_cl.tif"),
-#   overwrite = TRUE
-# )
-# terra::writeRaster(
-#   x = rast_10k,
-#   filename = file.path("tif","10k_clim_cl.tif"),
-#   overwrite = TRUE
-# )
+terra::writeRaster(
+  x = rast_15k,
+  filename = file.path("tif","15k_clim_cl.tif"),
+  overwrite = TRUE
+)
+terra::writeRaster(
+  x = rast_5k,
+  filename = file.path("tif","5k_clim_cl.tif"),
+  overwrite = TRUE
+)
+terra::writeRaster(
+  x = rast_10k,
+  filename = file.path("tif","10k_clim_cl.tif"),
+  overwrite = TRUE
+)
 ```
 
 For getting climate data on the 1km² scale, the 10k clusters will be used.
@@ -363,10 +356,10 @@ ref_rast <- terra::rast(
 plot(ref_rast[["prec"]])
 plot(ref_rast[["cluster"]])
 
-# terra::writeRaster(
-#   x = ref_rast,
-#   filename = "tif/reference_raster.tif"
-# )
+terra::writeRaster(
+  x = ref_rast,
+  filename = "tif/reference_raster.tif"
+)
 ```
 
 # Paper - Figures
@@ -525,26 +518,11 @@ p_left <- ggplot(df5_15k) +
   coord_common +
   common_theme +
   theme(
-    #axis.text.x  = element_blank(),
-    #axis.title.x = element_blank(),
-    #axis.ticks.x = element_blank(),
-    #axis.text.y  = element_blank(),
-    #axis.title.y = element_blank(),
-    #axis.ticks.y = element_blank(),
     legend.position = "none", # "right",
     plot.margin = margin(2,2,2,2),
     panel.spacing = unit(2, "pt"),
     strip.text = element_text(margin = margin(1, 1, 1, 1))
   )
-
-# ---- Add anomaly plots -------------------------------------------------
-#p_dens <- p_dens + common_theme
-#
-#p_fin <- (p_left | p_dens) +
-#  plot_annotation(tag_levels = "A") +
-#  plot_layout(widths = c(1, 2))
-#
-#p_fin
 ```
 
 ## Experimenting with map visualization
@@ -584,20 +562,10 @@ p_left <- ggplot(df5_15k) +
     height = unit(0.7, "cm"),
     width = unit(0.7, "cm")
   ) +
-  # color_scale_discrete +
-  # scale_color_discrete() +
-  # paletteer::scale_color_paletteer_d("dichromat::Categorical_12") +
-  # MetBrewer::scale_color_met_d("Signac") +
   MetBrewer::scale_color_met_d("Redon") +
   coord_common +
   common_theme +
   theme(
-    #axis.text.x  = element_blank(),
-    #axis.title.x = element_blank(),
-    #axis.ticks.x = element_blank(),
-    #axis.text.y  = element_blank(),
-    #axis.title.y = element_blank(),
-    #axis.ticks.y = element_blank(),
     legend.position = "none", # "right",
     plot.margin = margin(2,2,2,2),
     panel.spacing = unit(2, "pt"),
@@ -616,14 +584,14 @@ p_fin <- (p_left | p_dens) +
   plot_annotation(tag_levels = "A") +
   plot_layout(widths = c(1,2))
 
-#ggsave(
-#  filename = file.path(getwd(), "output/Fig2.tiff"),
-#  plot = p_fin,
-#  width = 190,
-#  height = 280,
-#  units = "mm",
-#  dpi = 500
-#)
+ggsave(
+  filename = file.path(getwd(), "output/Fig2.tiff"),
+  plot = p_fin,
+  width = 190,
+  height = 280,
+  units = "mm",
+  dpi = 500
+)
 ```
 
 ## Figure 5
@@ -822,7 +790,7 @@ cluster_sums <- df10k_sf %>%
     rad_sd = sd(rad, na.rm = TRUE),
     vpd_mean = mean(vpd, na.rm = TRUE),
     vpd_sd = sd(vpd, na.rm = TRUE),
-    
+
     # relative variability (coefficient of variation)
     max_temp_cv = sd(max_tmp, na.rm = TRUE) / mean(max_tmp, na.rm = TRUE),
     min_temp_cv = sd(min_tmp, na.rm = TRUE) / mean(min_tmp, na.rm = TRUE),
@@ -847,7 +815,7 @@ anomaly_sums <- df10k_sf %>%
     rad_sd = sd(rad_anomaly, na.rm = TRUE),
     vpd_mean = mean(vpd_anomaly, na.rm = TRUE),
     vpd_sd = sd(vpd_anomaly, na.rm = TRUE),
-    
+
     # relative variability (coefficient of variation)
     max_temp_cv = sd(max_temp_anomaly, na.rm = TRUE) / mean(max_temp_anomaly, na.rm = TRUE),
     min_temp_cv = sd(min_temp_anomaly, na.rm = TRUE) / mean(min_temp_anomaly, na.rm = TRUE),
@@ -1147,20 +1115,14 @@ save_as_docx(ft_a, path = file.path(getwd(), "output/area_mtr_tbl.docx"))
 
 
 ```{r}
-# area_stats %>% filter(area_km2 >= 100) %>% dplyr::select(one_of("cluster")) %>% st_drop_geometry()
-
-
 ggplot(
   data = df10k_sf %>%
     filter(
       cluster %in% (area_stats %>% filter(area_km2 >= 100) %>% dplyr::select(one_of("cluster")) %>% st_drop_geometry() %>% dplyr::pull(cluster))
-    ) 
+    )
 ) +
   geom_sf(aes(color = cluster), size = 1) +
   color_scale +
   coord_common
-
-# ggplot(data = area_stats) +
-#   geom_sf(aes(fill = cluster))
 ```
 

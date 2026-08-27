@@ -284,9 +284,9 @@ map_10k_mean <- plot_temperature_map_spat(
 ############################################
 map_dwd + map_10k + map_euro + plot_annotation(tag_levels = "A")
 
-map_10k + map_euro + plot_annotation(tag_levels = "A") #+ plot_layout(guides = "collect")
+map_10k + map_euro + plot_annotation(tag_levels = "A")
 map_10k_mean + map_euro + plot_annotation(tag_levels = "A")
-# map_10k_mean + map_euro + plot_annotation(tag_levels = "A") + plot_layout(guides = "collect")
+
 ggsave(
   filename = "output/ger_10keur.tif",
   scale = 3,
@@ -394,35 +394,7 @@ df_f2maps_s <- st_simplify(df_f2maps, dTolerance = 150)
 p_left <- ggplot(df_f2maps_s) +
   facet_wrap(~nr_clst, nrow = 3, ncol = 1) +
   geom_sf(aes(color = cluster_mod), size = 0.2) +
-  ## Scale bar
-  #annotation_scale(
-  #  data = data.frame(
-  #    nr_clst = factor(
-  #      tail(levels(df_f2maps_s$nr_clst), 1),
-  #      levels = levels(df_f2maps_s$nr_clst)
-  #    )
-  #  ),
-  #  location = "tr",
-  #  width_hint = 0.25,
-  #  pad_x = unit(0.05, "cm"),
-  #  pad_y = unit(0.05, "cm")
-  #) +
-  ## North arrow
-  #annotation_north_arrow(
-  #  data = data.frame(
-  #    nr_clst = factor(
-  #      head(levels(df_f2maps_s$nr_clst), 1),
-  #      levels = levels(df_f2maps_s$nr_clst)
-  #    )
-  #  ),
-  #  location = "tr",
-  #  which_north = "true",
-  #  style = north_arrow_fancy_orienteering,
-  #  height = unit(0.7, "cm"),
-  #  width = unit(0.7, "cm"),
-  #  pad_x = unit(0.05, "cm"),
-  #  pad_y = unit(0.05, "cm")
-  #) +
+
   MetBrewer::scale_color_met_d("Redon") +
   coord_common +
   common_theme +
@@ -432,34 +404,6 @@ p_left <- ggplot(df_f2maps_s) +
     panel.spacing = unit(2, "pt"),
     strip.text = element_text(margin = margin(1, 1, 1, 1))
   )
-
-## North arrow -----------------------------------------------------------
-#p_arrow <- ggplot() +
-#  annotation_north_arrow(
-#    location = "tl",
-#    #which_north = "true",
-#    style = north_arrow_fancy_orienteering,
-#    height = unit(1, "cm"),
-#    width = unit(1, "cm")
-#  ) +
-#  theme_void() +
-#  theme(
-#    rect = element_blank(),
-#    plot.background = element_rect(fill = NA, colour = NA)
-#  )
-#
-## Combine ---------------------------------------------------------------
-#p_left_fin <- p_left +
-#  inset_element(
-#    p_arrow,
-#    left = 0.7,
-#    bottom = 0.9,
-#    right = 0.85,
-#    top = 1,
-#    on_top = TRUE,
-#    align_to = "plot"
-#  )
-#p_left_fin
 
 p_dens <- p_dens + common_theme
 p_fin <- (p_left | p_dens) +

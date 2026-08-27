@@ -199,7 +199,7 @@ rm(ann_max_tmp, ann_mean_prec, ann_min_tmp, ann_rad)
 rm(eval_hurs, eval_tas, eval_vpd, df_rad, df_vpd)
 rm(td, vpd_pr, vpd_res, rad_res)
 
-# write_csv(df_clim %>% na.omit(), file = "clim_dat.csv")
+write_csv(df_clim %>% na.omit(), file = "clim_dat.csv")
 ```
 
 #### f_create_grid

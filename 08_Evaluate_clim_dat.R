@@ -60,8 +60,6 @@ ggplot(tabagg, aes(x=lon, y=lat, color=max_temp ) ) +
 
 
 library(terra)
-# r <- rast(paste0(base_path, "../tif/cluster_clim.tif"))
-# r <- rast(paste0(base_path, "../tif/10k_clim_cl.tif"))
 r <- rast("tif/10k_clim_cl.tif")
 plot(r, "cluster")
 

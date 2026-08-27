@@ -16,9 +16,15 @@ Loading libraries
 library(terra)
 library(tidyverse)
 library(ggpubr)
+library(ggspatial)
 library(patchwork)
 library(flextable)
 library(sf)
+library(elevatr)
+library(dplyr)
+library(ggplot2)
+library(MetBrewer)
+library(paletteer)
 ```
 Load clustered climate data from .csv files.
 ```{r}
@@ -131,250 +137,7 @@ df_9k <- f_calcCentAnom(df_9k, df9k_cent)
 df_10k <- f_calcCentAnom(df_10k, df10k_cent)
 df_15k <- f_calcCentAnom(df_15k, df15k_cent)
 ```
-## Anomaly histograms
-### Density - max_temp
-```{r}
-ggplot() +
-  theme_pubr() +
-  geom_density(
-    data = df_5k,
-    aes(x = max_temp_anomaly, col = "5k"),
-    alpha = .5
-  ) +
-  geom_density(
-    data = df_6k,
-    aes(x = max_temp_anomaly, col = "6k"),
-    alpha = .5
-  ) +
-  geom_density(
-    data = df_7k,
-    aes(x = max_temp_anomaly, col = "7k"),
-    alpha = .5
-  ) +
-  geom_density(
-    data = df_8k,
-    aes(x = max_temp_anomaly, col = "8k"),
-    alpha = .5
-  ) +
-  geom_density(
-    data = df_9k,
-    aes(x = max_temp_anomaly, col = "9k"),
-    alpha = .5
-  ) +
-  geom_density(
-    data = df_10k,
-    aes(x = max_temp_anomaly, col = "10k"),
-    alpha = .5
-  ) +
-  geom_density(
-    data = df_15k,
-    aes(x = max_temp_anomaly, col = "15k")
-  ) +
-  #xlim(-2.5,2.5) +
-  scale_color_manual(
-    name = "Cluster sizes",
-    breaks = c("5k", "6k", "7k", "8k", "9k", "10k", "15k"),
-    values = c("5k" = "#bfa19a", "6k" = "#62a2b3",
-             "7k" = "#7a5048", "8k" = "#452e2a",
-             "9k" = "#cd6548", "10k" = "#2d9eb6",
-             "15k" = "#0f0a0a")
-  )
-```
-### Density - min_temp
-```{r}
-ggplot() +
-  theme_pubr() +
-  geom_density(
-    data = df_5k,
-    aes(x = min_temp_anomaly, col = "5k"),
-    alpha = .5
-  ) +
-  geom_density(
-    data = df_6k,
-    aes(x = min_temp_anomaly, col = "6k"),
-    alpha = .5
-  ) +
-  geom_density(
-    data = df_7k,
-    aes(x = min_temp_anomaly, col = "7k"),
-    alpha = .5
-  ) +
-  geom_density(
-    data = df_8k,
-    aes(x = min_temp_anomaly, col = "8k"),
-    alpha = .5
-  ) +
-  geom_density(
-    data = df_9k,
-    aes(x = min_temp_anomaly, col = "9k"),
-    alpha = .5
-  ) +
-  geom_density(
-    data = df_10k,
-    aes(x = min_temp_anomaly, col = "10k"),
-    alpha = .5
-  ) +
-  geom_density(
-    data = df_15k,
-    aes(x = min_temp_anomaly, col = "15k")
-  ) +
-  #xlim(-2.5,2.5) +
-  scale_color_manual(
-    name = "Cluster sizes",
-    breaks = c("5k", "6k", "7k", "8k", "9k", "10k", "15k"),
-    values = c("5k" = "blue", "6k" = "yellow3",
-             "7k" = "orange", "8k" = "grey",
-             "9k" = "red2", "10k" = "black", "15k" = "green")
-  )
-```
-### Density - prec
-```{r}
-ggplot() +
-  theme_pubr() +
-  geom_density(
-    data = df_5k,
-    aes(x = prec_anomaly, col = "5k"),
-    alpha = .5
-  ) +
-  geom_density(
-    data = df_6k,
-    aes(x = prec_anomaly, col = "6k"),
-    alpha = .5
-  ) +
-  geom_density(
-    data = df_7k,
-    aes(x = prec_anomaly, col = "7k"),
-    alpha = .5
-  ) +
-  geom_density(
-    data = df_8k,
-    aes(x = prec_anomaly, col = "8k"),
-    alpha = .5
-  ) +
-  geom_density(
-    data = df_9k,
-    aes(x = prec_anomaly, col = "9k"),
-    alpha = .5
-  ) +
-  geom_density(
-    data = df_10k,
-    aes(x = prec_anomaly, col = "10k"),
-    alpha = .5
-  ) +
-  geom_density(
-    data = df_15k,
-    aes(x = prec_anomaly, col = "15k"),
-    alpha = .5
-  ) +
-  #xlim(-100,100) +
-  scale_color_manual(
-    name = "Cluster sizes",
-    breaks = c("5k", "6k", "7k", "8k", "9k", "10k", "15k"),
-    values = c("5k" = "blue", "6k" = "yellow3",
-             "7k" = "orange", "8k" = "grey",
-             "9k" = "red2", "10k" = "black",
-             "15k" = "green")
-  )
-```
-### Density - rad
-```{r}
-ggplot() +
-  theme_pubr() +
-  geom_density(
-    data = df_5k,
-    aes(x = rad_anomaly, col = "5k"),
-    alpha = .5
-  ) +
-  geom_density(
-    data = df_6k,
-    aes(x = rad_anomaly, col = "6k"),
-    alpha = .5
-  ) +
-  geom_density(
-    data = df_7k,
-    aes(x = rad_anomaly, col = "7k"),
-    alpha = .5
-  ) +
-  geom_density(
-    data = df_8k,
-    aes(x = rad_anomaly, col = "8k"),
-    alpha = .5
-  ) +
-  geom_density(
-    data = df_9k,
-    aes(x = rad_anomaly, col = "9k"),
-    alpha = .5
-  ) +
-  geom_density(
-    data = df_10k,
-    aes(x = rad_anomaly, col = "10k"),
-    alpha = .5
-  ) +
-  geom_density(
-    data = df_15k,
-    aes(x = rad_anomaly, col = "15k"),
-    alpha = .5
-  ) +
-  #xlim(-1.5,1.5) +
-  scale_color_manual(
-    name = "Cluster sizes",
-    breaks = c("5k", "6k", "7k", "8k", "9k", "10k", "15k"),
-    values = c("5k" = "blue", "6k" = "yellow3",
-             "7k" = "orange", "8k" = "grey",
-             "9k" = "red2", "10k" = "black",
-             "15k" = "green")
-  )
-```
 
-### Density - vpd
-```{r}
-ggplot() +
-  theme_pubr() +
-  geom_density(
-    data = df_5k,
-    aes(x = vpd_anomaly, col = "5k"),
-    alpha = .5
-  ) +
-  geom_density(
-    data = df_6k,
-    aes(x = vpd_anomaly, col = "6k"),
-    alpha = .5
-  ) +
-  geom_density(
-    data = df_7k,
-    aes(x = vpd_anomaly, col = "7k"),
-    alpha = .5
-  ) +
-  geom_density(
-    data = df_8k,
-    aes(x = vpd_anomaly, col = "8k"),
-    alpha = .5
-  ) +
-  geom_density(
-    data = df_9k,
-    aes(x = vpd_anomaly, col = "9k"),
-    alpha = .5
-  ) +
-  geom_density(
-    data = df_10k,
-    aes(x = vpd_anomaly, col = "10k"),
-    alpha = .5
-  ) +
-  geom_density(
-    data = df_15k,
-    aes(x = vpd_anomaly, col = "15k"),
-    alpha = .5
-  ) +
-  #xlim(-0.02,0.02) +
-  scale_color_manual(
-    name = "Cluster sizes",
-    breaks = c("5k", "6k", "7k", "8k", "9k", "10k", "15k"),
-    values = c("5k" = "blue", "6k" = "yellow3",
-             "7k" = "orange", "8k" = "grey",
-             "9k" = "red2", "10k" = "black",
-             "15k" = "green")
-  )
-```
 ### Metrics for Anomalies (table 2)
 Calculate area mean and sd
 ```{r}
@@ -413,12 +176,12 @@ df_list <- list(
 
 
 
-library(furrr)
-
-plan(multicore)  # or multicore on Linux/macOS
-
+# library(furrr)
+# plan(multicore)  # or multicore on Linux/macOS
+library(purrr)
 df_area <- df_list %>%
-  future_map(f_process_area, crs_refsystem = crs_refsystem) %>%
+  # future_map(f_process_area, crs_refsystem = crs_refsystem) %>%
+  map(f_process_area, crs_refsystem = crs_refsystem) %>% 
   list_rbind(names_to = "source_id")
 
 df_area <- df_area %>% mutate(
@@ -745,16 +508,29 @@ df5_15k <- bind_rows(
 p_left <- ggplot(df5_15k) +
   facet_wrap(~nr_clst, nrow = 3, ncol = 1) +
   geom_sf(aes(color = cluster_mod), size = 1) + # 0.2) +
+  # Scale bar
+  annotation_scale(
+    location = "bl",
+    width_hint = 0.25
+  ) +
+  # North arrow
+  annotation_north_arrow(
+    location = "tr",
+    which_north = "true",
+    style = north_arrow_minimal,
+    height = unit(0.7, "cm"),
+    width = unit(0.7, "cm")
+  ) +
   MetBrewer::scale_color_met_d("Redon") + #, guide = "none") +
   coord_common +
   common_theme +
   theme(
-    axis.text.x  = element_blank(),
-    axis.title.x = element_blank(),
-    axis.ticks.x = element_blank(),
-    axis.text.y  = element_blank(),
-    axis.title.y = element_blank(),
-    axis.ticks.y = element_blank(),
+    #axis.text.x  = element_blank(),
+    #axis.title.x = element_blank(),
+    #axis.ticks.x = element_blank(),
+    #axis.text.y  = element_blank(),
+    #axis.title.y = element_blank(),
+    #axis.ticks.y = element_blank(),
     legend.position = "none", # "right",
     plot.margin = margin(2,2,2,2),
     panel.spacing = unit(2, "pt"),
@@ -762,33 +538,18 @@ p_left <- ggplot(df5_15k) +
   )
 
 # ---- Add anomaly plots -------------------------------------------------
-p_dens <- p_dens + common_theme
-
-p_fin <- (p_left | p_dens) +
-  plot_annotation(tag_levels = "A") +
-  plot_layout(widths = c(1, 2))
-
-p_fin
+#p_dens <- p_dens + common_theme
+#
+#p_fin <- (p_left | p_dens) +
+#  plot_annotation(tag_levels = "A") +
+#  plot_layout(widths = c(1, 2))
+#
+#p_fin
 ```
 
-```{r}
-ggsave(
-  filename = file.path(getwd(), "output/Fig2.tiff"),
-  plot = p_fin,
-  width = 190,
-  height = 280,
-  units = "mm",
-  dpi = 500
-)
-```
 ## Experimenting with map visualization
 ### Modulo to shift colourspace
 ```{r}
-library(dplyr)
-library(ggplot2)
-library(MetBrewer)
-library(paletteer)
-
 # Choose how many colour groups you can actually see
 n_groups <- 12
 
@@ -810,6 +571,19 @@ df5_15k <- bind_rows(
 p_left <- ggplot(df5_15k) +
   facet_wrap(~nr_clst, nrow = 3, ncol = 1) +
   geom_sf(aes(color = cluster_mod), size = 0.2) +
+  # Scale bar
+  annotation_scale(
+    location = "bl",
+    width_hint = 0.25
+  ) +
+  # North arrow
+  annotation_north_arrow(
+    location = "tr",
+    which_north = "true",
+    style = north_arrow_minimal,
+    height = unit(0.7, "cm"),
+    width = unit(0.7, "cm")
+  ) +
   # color_scale_discrete +
   # scale_color_discrete() +
   # paletteer::scale_color_paletteer_d("dichromat::Categorical_12") +
@@ -818,12 +592,12 @@ p_left <- ggplot(df5_15k) +
   coord_common +
   common_theme +
   theme(
-    axis.text.x  = element_blank(),
-    axis.title.x = element_blank(),
-    axis.ticks.x = element_blank(),
-    axis.text.y  = element_blank(),
-    axis.title.y = element_blank(),
-    axis.ticks.y = element_blank(),
+    #axis.text.x  = element_blank(),
+    #axis.title.x = element_blank(),
+    #axis.ticks.x = element_blank(),
+    #axis.text.y  = element_blank(),
+    #axis.title.y = element_blank(),
+    #axis.ticks.y = element_blank(),
     legend.position = "none", # "right",
     plot.margin = margin(2,2,2,2),
     panel.spacing = unit(2, "pt"),
@@ -834,20 +608,200 @@ p_left
 ```
 
 ```{r}
+saveRDS(df5_15k, "output/fig2_maps.rds")
+saveRDS(ldf_clScen, "output/fig2_dens.rds")
+
+p_dens <- p_dens + common_theme
 p_fin <- (p_left | p_dens) +
   plot_annotation(tag_levels = "A") +
   plot_layout(widths = c(1,2))
 
+#ggsave(
+#  filename = file.path(getwd(), "output/Fig2.tiff"),
+#  plot = p_fin,
+#  width = 190,
+#  height = 280,
+#  units = "mm",
+#  dpi = 500
+#)
+```
+
+## Figure 5
+Create figure 5, with Berchtesgaden area and Northsea coast.
+
+```{r}
+df10k_sf_modulo <- df10k_sf |> 
+  mutate(
+    cluster_idx = match(cluster, unique(cluster)),
+    cluster_mod = factor(((cluster_idx - 1) %% n_groups) + 1)
+  )
+df_ll <- st_transform(df10k_sf_modulo, 4326)
+
+# Map extents
+bgd_bbox <- st_bbox(
+  c(
+    xmin = 12.65,
+    xmax = 13.15,
+    ymin = 47.45,
+    ymax = 47.70
+  ),
+  crs = 4326
+)
+sea_bbox <- st_bbox(
+  c(
+    xmin = 7.0,
+    xmax = 8.25,
+    ymin = 53.20,
+    ymax = 53.80
+  ),
+  crs = 4326
+)
+df_bgd <- st_crop(df_ll, bgd_bbox)
+df_sea <- st_crop(df_ll, sea_bbox)
+
+# Hillshade function
+f_make_hillshade <- function(bbox, z = 12, angle = 45, direction = 315) {
+  dem <- get_elev_raster(
+    locations = st_as_sf(st_as_sfc(bbox)),
+    z = z,
+    clip = "bbox"
+  )
+  dem <- rast(dem)
+
+  # align with sf layer
+  dem <- project(dem, "EPSG:4326")
+
+  slope  <- terrain(dem, v = "slope", unit = "radians")
+  aspect <- terrain(dem, v = "aspect", unit = "radians")
+
+  hill <- shade(
+    slope,
+    aspect,
+    angle = angle,
+    direction = direction
+  )
+
+  hill_df <- as.data.frame(
+    hill,
+    xy = TRUE,
+    na.rm = TRUE
+  )
+  names(hill_df)[3] <- "shade"
+
+  return(hill_df)
+}
+hill_df_bgd <- f_make_hillshade(bgd_bbox, z = 12)
+hill_df_sea <- f_make_hillshade(sea_bbox, z = 10)
+
+# Colour palette
+pal <- met.brewer(
+  "Redon",
+  n = length(levels(df_ll$cluster_mod))
+)
+
+# Berchtesgaden
+p_bgd <- ggplot() +
+  geom_raster(
+    data = hill_df_bgd,
+    aes(x, y, fill = shade),
+    alpha = 0.35
+  ) +
+  scale_fill_gradient(
+    low = "white",
+    high = "grey25",
+    guide = "none"
+  ) +
+  ggnewscale::new_scale_fill() +
+  geom_sf(
+    data = df_bgd,
+    aes(fill = cluster_mod),
+    colour = NA,
+    alpha = 0.75
+  ) +
+  scale_fill_manual(values = pal) +
+  annotation_scale(location = "bl") +
+  annotation_north_arrow(
+    location = "tr",
+    which_north = "true",
+    style = north_arrow_fancy_orienteering,
+    height = unit(0.7, "cm"),
+    width = unit(0.7, "cm")
+  ) +
+  coord_sf(
+    xlim = c(12.65, 13.15),
+    ylim = c(47.45, 47.70),
+    expand = FALSE
+  ) +
+  common_theme +
+  theme(
+    legend.position = "none",
+    plot.margin = margin(2, 2, 2, 2, "mm")
+  )
+
+
+# Dutch border to Bremen area
+p_sea <- ggplot() +
+  geom_raster(
+    data = hill_df_sea,
+    aes(x, y, fill = shade),
+    alpha = 0.35
+  ) +
+  scale_fill_gradient(
+    low = "white",
+    high = "grey25",
+    guide = "none"
+  ) +
+  ggnewscale::new_scale_fill() +
+  geom_sf(
+    data = df_sea,
+    aes(fill = cluster_mod),
+    colour = NA,
+    alpha = 0.75
+  ) +
+  scale_fill_manual(values = pal) +
+  annotation_scale(location = "bl") +
+  annotation_north_arrow(
+    location = "tr",
+    which_north = "true",
+    style = north_arrow_fancy_orienteering,
+    height = unit(0.7, "cm"),
+    width = unit(0.7, "cm")
+  ) +
+  coord_sf(
+    xlim = c(7.0, 8.25),
+    ylim = c(53.20, 53.80),
+    expand = FALSE
+  ) +
+  common_theme +
+  theme(
+    legend.position = "none",
+    plot.margin = margin(2, 2, 2, 2, "mm")
+  )
+
+# Combine with patchwork
+p_fig5 <- (p_bgd | p_sea) +
+  plot_layout(widths = c(1, 1)) +
+  plot_annotation(
+    tag_levels = "A",
+    theme = theme(
+      plot.tag.position = c(0, 1),
+      plot.tag = element_text(face = "bold", size = 14)
+    )
+  )
+p_fig5
+```
+
+```{r}
 ggsave(
-  filename = file.path(getwd(), "output/Fig2.tiff"),
-  plot = p_fin,
-  width = 190,
-  height = 280,
+  filename = file.path(getwd(), "output/Fig5.tiff"),
+  plot = p_fig5,
+  scale = 3,
+  width = 90,
+  height = 45,
   units = "mm",
   dpi = 500
 )
 ```
-
 
 ## Calculating Metrics - 10k clusters
 Metrics to calculate: standard deviations, spatial range, relative variability.
@@ -1087,7 +1041,7 @@ ph_per <- ggplot(data = area_stats) +
 ph_area + ph_comp + ph_per + plot_annotation(tag_levels = "A")
 
 ggsave(
-  filename = file.path(getwd(), "output/Figure3.tiff"),
+  filename = file.path(getwd(), "output/Figure4.tiff"),
   scale = 3,
   width = 90,
   height = 45,

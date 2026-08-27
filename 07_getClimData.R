@@ -5,12 +5,12 @@ library(sf)
 library(DBI)
 
 if (.Platform$OS.type == "windows") {
-  cPath <- "F:/Data/climatedata/germany_1km_res/2_work"
-  path <- "F:/Projects/FutureForest/FF_main/04_work/marc/"
+  cPath <- "F:/data/climatedata/germany_1km_res/2_work"
+  path <- "F:/projects/FutureForest/FF_main/04_work/marc/"
   path_dss <- "/data/dss/SVD/data/climate_database/spark_db_v3/"
 } else {
-  cPath <- "/data/public/Data/climatedata/germany_1km_res/2_work"
-  path <- "/data/public/Projects/FutureForest/FF_main/04_work/marc/"
+  cPath <- "/data/public/data/climatedata/germany_1km_res/2_work"
+  path <- "/data/public/projects/FutureForest/FF_main/04_work/marc/"
   path_dss <- "/data/dss/SVD/data/climate_database/spark_db_v3/"
 }
 cPath <- normalizePath(cPath, winslash = "/")
@@ -30,7 +30,7 @@ future_scn <- c(
   "ICHEC-EC-EARTH_rcp_2_6",
   "NCC-NorESM1-M_rcp_8_5",
   "NCC-NorESM1-M_rcp_4_5",
-  "NCC-NorESM1-M_rcp_2_6",
+  "NCC-NorESM1-M_rcp_2_6_fix",
   "MPI-M-MPI-ESM-LR_rcp_8_5",
   "MPI-M-MPI-ESM-LR_rcp_4_5",
   "MPI-M-MPI-ESM-LR_rcp_2_6"
@@ -41,7 +41,7 @@ hist_scn <- c(
   "MPI-M-MPI-ESM-LR_historical"
 )
 scenarios <- c(future_scn, hist_scn)
-# scenarios <- c(hist_scn)
+#scenarios <- c(future_scn)
 
 Sys.setenv("SPARK_HOME" = "/opt/spark")
 # Set memory allocation for whole local spark instance
@@ -86,10 +86,10 @@ f_hive_free_read_paquete <- function(sc, path, tbl_name = NULL) {
   
   return(sdf)
 }
-models <- c("ICHEC-EC-EARTH", "MPI-M-MPI-ESM-LR", "NCC-NorESM1-M")
+models <- c("NCC-NorESM1-M", "ICHEC-EC-EARTH", "MPI-M-MPI-ESM-LR")
 
 for (scn in scenarios) {
-  # scn <- scenarios[2]
+  # scn <- scenarios[6]
   cat(scn, "\n")
   flush.console()
   if (grepl("historical", scn)) {

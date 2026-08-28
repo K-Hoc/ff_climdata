@@ -18,7 +18,7 @@ The core objective is to bridge the gap between large-scale climate models and l
 ### Core Scripts & Workflows
 
 | File | Role | Description |
-| :--- * | :--- | :--- |
+| :--- | :--- | :--- |
 | `01_clim_scr.Rmd` | **Preprocessing** | Scrubber and preparation of raw DWD raster data into a unified format. |
 | `02_cluster5-10k.py` | **Clustering** | Clustering implementation using `MiniBatchKMeans`. |
 | `03_post_clustering.Rmd`| **Analysis** | Post-clustering processing, including anomaly calculation and cluster metric evaluation. |

@@ -36,14 +36,14 @@ The workflow will create directories that are used to store intermediate and fin
 * `bias_tbl/`: Stores calculated bias correction factors and aggregated historical summaries.
 * `tif/`: Generated spatial products (GeoTIFF format).
 * `output/`: Intermediate plots, summary tables, and extracted statistics.
-* `clim_dbs/`: SQLite databases containing processed climate time series for rapid access.
+* `clim_dbs/`: SQLite databases containing processed climate time series.
 
 ## Quick Workflow
 
 To reproduce the full pipeline, execute the scripts in the following order:
 
 1.  **Data Preparation**: Run `01_clim_scr.Rmd` to preprocess raw raster inputs.
-2.  **Clustering**: Execute `0_cluster5-10k.py` to perform K-Means clustering on the prepared climate data.
+2.  **Clustering**: Execute `02_cluster5-10k.py` to perform K-Means clustering on the prepared climate data.
 3.  **Post-Processing**: Run `03_post_clustering.Rmd` and `04_Centoid_LatLon.Rmd` to refine cluster centroids and calculate anomalies.
 4.  **Spatial Mapping**: Use `05_tiff_creation.Rmd` to generate the 1km resolution raster layers.
 5.  **Bias Correction Setup**: Run `06_bias_handling.Rmd` to compute necessary bias correction parameters.

@@ -1,4 +1,4 @@
-# Data for: A high-resolution daily climate time series data for Germany (1981-2100)
+# Data for: A high-resolution daily climate time series for Germany (1981-2100)
 
 This is a computational pipeline designed to generate high-resolution (1km²) climate time series for Germany. Spatial climate data points (DWD) are clustered, and time series for each cluster created from coarse EURO-CORDEX data. This makes the coarse outputs of climate models available at a finer grid, making it more suitable for ecological applications like ecosystem modelling in iLand.
 
